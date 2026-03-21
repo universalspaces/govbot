@@ -17,15 +17,22 @@ const app = express();
 const httpServer = createServer(app);
 const io = new SocketIO(httpServer);
 
+// Trust Replit's reverse proxy so HTTPS cookies and forwarded headers work correctly
+app.set('trust proxy', 1);
+
 // Middleware
-app.use(cors());
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(session({
   secret: process.env.SESSION_SECRET || 'govbot-secret',
   resave: false,
   saveUninitialized: false,
-  cookie: { secure: false, maxAge: 86400000 }
+  cookie: {
+    secure: true,
+    sameSite: 'lax',
+    maxAge: 86400000
+  }
 }));
 app.use(passport.initialize());
 app.use(passport.session());
