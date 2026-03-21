@@ -5,9 +5,9 @@ UNIVERSALSPACES CUSTOM LICENSE
 This license governs the use, modification, and distribution of this software
 and its associated documentation files (the "Software").
 
-────────────────────────────────────────────────────────────────────────────────
+──────────────────────────────────────────────────────────────────────
 PERMISSIONS
-────────────────────────────────────────────────────────────────────────────────
+──────────────────────────────────────────────────────────────────────
 
 You ARE permitted to:
 
@@ -22,9 +22,9 @@ You ARE permitted to:
   4. REDISTRIBUTE — Share or redistribute the Software or modified versions,
      provided the following conditions are met (see Conditions below).
 
-────────────────────────────────────────────────────────────────────────────────
+──────────────────────────────────────────────────────────────────────
 CONDITIONS
-────────────────────────────────────────────────────────────────────────────────
+──────────────────────────────────────────────────────────────────────
 
 Any redistribution or modified version of the Software must:
 
@@ -38,9 +38,9 @@ Any redistribution or modified version of the Software must:
   3. INDICATE CHANGES — Clearly state any changes made to the original
      Software if distributing a modified version.
 
-────────────────────────────────────────────────────────────────────────────────
+──────────────────────────────────────────────────────────────────────
 RESTRICTIONS
-────────────────────────────────────────────────────────────────────────────────
+──────────────────────────────────────────────────────────────────────
 
 You ARE NOT permitted to:
 
@@ -54,9 +54,9 @@ You ARE NOT permitted to:
   3. REDISTRIBUTE WITHOUT CREDIT — Distribute the Software or any derivative
      works without clearly crediting universalspaces as the original author.
 
-────────────────────────────────────────────────────────────────────────────────
+──────────────────────────────────────────────────────────────────────
 DISCLAIMER
-────────────────────────────────────────────────────────────────────────────────
+──────────────────────────────────────────────────────────────────────
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
