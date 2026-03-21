@@ -30,13 +30,17 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
-// Passport Discord OAuth2
-passport.use(new DiscordStrategy({
-  clientID: process.env.CLIENT_ID,
-  clientSecret: process.env.CLIENT_SECRET,
-  callbackURL: process.env.CALLBACK_URL || 'http://localhost:3000/auth/callback',
-  scope: ['identify', 'guilds']
-}, (accessToken, refreshToken, profile, done) => done(null, profile)));
+// Passport Discord OAuth2 (only if credentials are configured)
+const oauthConfigured = !!(process.env.CLIENT_ID && process.env.CLIENT_SECRET);
+
+if (oauthConfigured) {
+  passport.use(new DiscordStrategy({
+    clientID: process.env.CLIENT_ID,
+    clientSecret: process.env.CLIENT_SECRET,
+    callbackURL: process.env.CALLBACK_URL || 'http://localhost:5000/auth/callback',
+    scope: ['identify', 'guilds']
+  }, (accessToken, refreshToken, profile, done) => done(null, profile)));
+}
 
 passport.serializeUser((user, done) => done(null, user));
 passport.deserializeUser((user, done) => done(null, user));
@@ -48,10 +52,14 @@ const requireAuth = (req, res, next) => {
 };
 
 // ─── AUTH ROUTES ───────────────────────────────────────────────────────────
-app.get('/auth/discord', passport.authenticate('discord'));
-app.get('/auth/callback', passport.authenticate('discord', {
-  failureRedirect: '/?error=auth_failed'
-}), (req, res) => res.redirect('/dashboard'));
+app.get('/auth/discord', (req, res, next) => {
+  if (!oauthConfigured) return res.status(503).json({ error: 'Discord OAuth not configured. Add CLIENT_ID and CLIENT_SECRET secrets.' });
+  passport.authenticate('discord')(req, res, next);
+});
+app.get('/auth/callback', (req, res, next) => {
+  if (!oauthConfigured) return res.redirect('/?error=oauth_not_configured');
+  passport.authenticate('discord', { failureRedirect: '/?error=auth_failed' })(req, res, next);
+}, (req, res) => res.redirect('/dashboard'));
 app.get('/auth/logout', (req, res) => { req.logout(() => res.redirect('/')); });
 app.get('/auth/me', (req, res) => {
   if (!req.user) return res.json({ authenticated: false });
@@ -177,5 +185,5 @@ io.on('connection', (socket) => {
 
 export { io };
 
-const PORT = process.env.DASHBOARD_PORT || 3000;
-httpServer.listen(PORT, () => console.log(`🌐 Dashboard running at http://localhost:${PORT}`));
+const PORT = process.env.DASHBOARD_PORT || 5000;
+httpServer.listen(PORT, '0.0.0.0', () => console.log(`🌐 Dashboard running at http://0.0.0.0:${PORT}`));
