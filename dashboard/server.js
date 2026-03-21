@@ -33,11 +33,16 @@ app.use(passport.session());
 // Passport Discord OAuth2 (only if credentials are configured)
 const oauthConfigured = !!(process.env.CLIENT_ID && process.env.CLIENT_SECRET);
 
+const replitDomain = process.env.REPLIT_DEV_DOMAIN;
+const defaultCallbackURL = replitDomain
+  ? `https://${replitDomain}/auth/callback`
+  : 'http://localhost:5000/auth/callback';
+
 if (oauthConfigured) {
   passport.use(new DiscordStrategy({
     clientID: process.env.CLIENT_ID,
     clientSecret: process.env.CLIENT_SECRET,
-    callbackURL: process.env.CALLBACK_URL || 'http://localhost:5000/auth/callback',
+    callbackURL: process.env.CALLBACK_URL || defaultCallbackURL,
     scope: ['identify', 'guilds']
   }, (accessToken, refreshToken, profile, done) => done(null, profile)));
 }
@@ -186,4 +191,17 @@ io.on('connection', (socket) => {
 export { io };
 
 const PORT = process.env.DASHBOARD_PORT || 5000;
-httpServer.listen(PORT, '0.0.0.0', () => console.log(`🌐 Dashboard running at http://0.0.0.0:${PORT}`));
+httpServer.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`❌ Port ${PORT} is in use. Retrying in 2 seconds...`);
+    setTimeout(() => httpServer.listen(PORT, '0.0.0.0'), 2000);
+  } else {
+    console.error('Server error:', err);
+    process.exit(1);
+  }
+});
+httpServer.listen(PORT, '0.0.0.0', () => {
+  console.log(`🌐 Dashboard running at http://0.0.0.0:${PORT}`);
+  if (replitDomain) console.log(`🔗 Public URL: https://${replitDomain}`);
+  if (oauthConfigured) console.log(`🔑 OAuth callback: ${process.env.CALLBACK_URL || defaultCallbackURL}`);
+});

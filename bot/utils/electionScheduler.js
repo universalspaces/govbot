@@ -52,7 +52,7 @@ async function announceElectionStart(client, election) {
 
 export async function closeElection(client, election) {
   const candidates = db.prepare(`
-    SELECT c.*, u.user_id FROM candidates c WHERE c.election_id = ? ORDER BY c.votes DESC
+    SELECT * FROM candidates WHERE election_id = ? ORDER BY votes DESC
   `).all(election.id);
 
   const winner = candidates[0];
