@@ -1,9 +1,12 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { mkdirSync } from 'fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const db = new Database(path.join(__dirname, '../data/govbot.db'));
+const dataDir = path.join(__dirname, '../data');
+mkdirSync(dataDir, { recursive: true });
+const db = new Database(path.join(dataDir, 'govbot.db'));
 
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');

@@ -2,12 +2,10 @@ node_modules/
 .env
 
 # SQLite database files
-data/govbot.db
-data/govbot.db-shm
-data/govbot.db-wal
 data/*.db
 data/*.db-shm
 data/*.db-wal
+!data/.gitkeep
 
 # Logs
 *.log
