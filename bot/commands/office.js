@@ -71,11 +71,33 @@ export default {
       const office = db.prepare('SELECT * FROM offices WHERE guild_id = ? AND LOWER(name) = LOWER(?)').get(gid, officeName);
       if (!office) return interaction.reply({ embeds: [errorEmbed(`Office **${officeName}** not found.`)], ephemeral: true });
 
+      // Check term limits
+      const limit = db.prepare('SELECT * FROM term_limits WHERE guild_id = ? AND LOWER(office_name) = LOWER(?)').get(gid, officeName);
+      if (limit) {
+        const termsServed = db.prepare('SELECT COUNT(*) as cnt FROM office_history WHERE guild_id = ? AND office_name = ? AND user_id = ?')
+          .get(gid, office.name, target.id).cnt;
+        if (termsServed >= limit.max_terms) {
+          return interaction.reply({ embeds: [errorEmbed(`<@${target.id}> has already served the maximum **${limit.max_terms}** term(s) as **${office.name}** and cannot be reappointed.`)], ephemeral: true });
+        }
+      }
+
+      // Archive previous holder if there was one
+      if (office.holder_id && office.assumed_at) {
+        db.prepare('INSERT INTO office_history (guild_id, office_name, user_id, assumed_at, vacated_at, reason) VALUES (?, ?, ?, ?, ?, ?)')
+          .run(gid, office.name, office.holder_id, office.assumed_at, Math.floor(Date.now() / 1000), 'replaced');
+        // Remove old holder's role
+        if (office.role_id) {
+          try {
+            const oldMember = await interaction.guild.members.fetch(office.holder_id);
+            await oldMember.roles.remove(office.role_id);
+          } catch (e) {}
+        }
+      }
+
       const now = Math.floor(Date.now() / 1000);
       db.prepare('UPDATE offices SET holder_id = ?, assumed_at = ? WHERE id = ?').run(target.id, now, office.id);
       logActivity(gid, 'OFFICE_APPOINTED', uid, officeName, target.id);
 
-      // Assign role if set
       if (office.role_id) {
         try {
           const member = await interaction.guild.members.fetch(target.id);
@@ -95,6 +117,12 @@ export default {
       if (!office || !office.holder_id) return interaction.reply({ embeds: [errorEmbed(`Office **${officeName}** not found or is already vacant.`)], ephemeral: true });
 
       const prevHolder = office.holder_id;
+      const now2 = Math.floor(Date.now() / 1000);
+      // Archive to history
+      if (office.assumed_at) {
+        db.prepare('INSERT INTO office_history (guild_id, office_name, user_id, assumed_at, vacated_at, reason) VALUES (?, ?, ?, ?, ?, ?)')
+          .run(gid, office.name, prevHolder, office.assumed_at, now2, 'removed');
+      }
       db.prepare('UPDATE offices SET holder_id = NULL, assumed_at = NULL WHERE id = ?').run(office.id);
 
       if (office.role_id) {
