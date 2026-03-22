@@ -33,7 +33,7 @@ for (const file of commandFiles) {
 }
 
 // Event: Ready
-client.once('clientReady', () => {
+client.once('ready', () => {
   console.log(`✅ GovBot is online as ${client.user.tag}`);
   console.log(`📊 Serving ${client.guilds.cache.size} server(s)`);
 
