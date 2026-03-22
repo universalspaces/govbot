@@ -195,33 +195,47 @@ export default {
         return interaction.reply({ embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle('🏛️ Party Stats').setDescription('No parties have been formed yet.')] });
       }
 
-      const fields = parties.map(p => {
-        const members = db.prepare('SELECT COUNT(*) as cnt FROM party_members WHERE party_id = ?').get(p.id).cnt;
-        const electionsWon = db.prepare("SELECT COUNT(*) as cnt FROM elections WHERE guild_id = ? AND winner_id IN (SELECT user_id FROM party_members WHERE party_id = ?)").get(gid, p.id).cnt;
-        const billsPassed = db.prepare(`
-          SELECT COUNT(*) as cnt FROM bills
-          WHERE guild_id = ? AND status = 'passed'
-          AND sponsor_id IN (SELECT user_id FROM party_members WHERE party_id = ?)
-        `).get(gid, p.id).cnt;
-        const officesHeld = db.prepare('SELECT COUNT(*) as cnt FROM offices WHERE guild_id = ? AND holder_id IN (SELECT user_id FROM party_members WHERE party_id = ?)').get(gid, p.id).cnt;
+      // FIX: batch queries instead of N+1 loops
+      const partyIds = parties.map(p => p.id);
+      const placeholders = partyIds.map(() => '?').join(',');
 
-        return {
-          name: `${p.emoji} ${p.name} (${p.abbreviation})`,
-          value: [
-            `👥 Members: **${members}**`,
-            `🏆 Elections won: **${electionsWon}**`,
-            `📜 Bills passed: **${billsPassed}**`,
-            `💼 Offices held: **${officesHeld}**`,
-          ].join('\n'),
-          inline: true
-        };
-      });
+      const memberCounts = db.prepare(`SELECT party_id, COUNT(*) as cnt FROM party_members WHERE party_id IN (${placeholders}) GROUP BY party_id`).all(...partyIds);
+      const memberMap = Object.fromEntries(memberCounts.map(r => [r.party_id, r.cnt]));
+
+      const winnerRows = db.prepare(`
+        SELECT pm.party_id, COUNT(*) as cnt FROM elections e
+        JOIN party_members pm ON e.winner_id = pm.user_id AND pm.party_id IN (${placeholders})
+        WHERE e.guild_id = ? GROUP BY pm.party_id
+      `).all(...partyIds, gid);
+      const winsMap = Object.fromEntries(winnerRows.map(r => [r.party_id, r.cnt]));
+
+      const billRows = db.prepare(`
+        SELECT pm.party_id, COUNT(*) as cnt FROM bills b
+        JOIN party_members pm ON b.sponsor_id = pm.user_id AND pm.party_id IN (${placeholders})
+        WHERE b.guild_id = ? AND b.status = 'passed' GROUP BY pm.party_id
+      `).all(...partyIds, gid);
+      const billsMap = Object.fromEntries(billRows.map(r => [r.party_id, r.cnt]));
+
+      const officeRows = db.prepare(`
+        SELECT pm.party_id, COUNT(*) as cnt FROM offices o
+        JOIN party_members pm ON o.holder_id = pm.user_id AND pm.party_id IN (${placeholders})
+        WHERE o.guild_id = ? GROUP BY pm.party_id
+      `).all(...partyIds, gid);
+      const officesMap = Object.fromEntries(officeRows.map(r => [r.party_id, r.cnt]));
+
+      const fields = parties.map(p => ({
+        name: `${p.emoji} ${p.name} (${p.abbreviation})`,
+        value: [
+          `👥 Members: **${memberMap[p.id] || 0}**`,
+          `🏆 Elections won: **${winsMap[p.id] || 0}**`,
+          `📜 Bills passed: **${billsMap[p.id] || 0}**`,
+          `💼 Offices held: **${officesMap[p.id] || 0}**`,
+        ].join('\n'),
+        inline: true
+      }));
 
       return interaction.reply({
-        embeds: [new EmbedBuilder()
-          .setColor(0x5865f2)
-          .setTitle('🏛️ Party Comparison Stats')
-          .addFields(fields)]
+        embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle('🏛️ Party Comparison Stats').addFields(fields)]
       });
     }
   }
