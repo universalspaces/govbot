@@ -260,6 +260,7 @@
     .card-title { font-size: 0.78rem; font-weight: 600; }
     .card-meta { font-size: 0.72rem; color: var(--muted); }
     .card-body { padding: 1.25rem; }
+    .card-body-flush { padding: 0; }
 
     /* TABLE */
     .tbl { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
@@ -404,6 +405,10 @@
         <div class="nav-item" onclick="navigate('court',this)">Court</div>
         <div class="nav-item" onclick="navigate('impeachments',this)">Impeachments</div>
         <div class="nav-item" onclick="navigate('offices',this)">Offices</div>
+
+        <div class="sb-group">Finance & Admin</div>
+        <div class="nav-item" onclick="navigate('treasury',this)">Treasury</div>
+        <div class="nav-item" onclick="navigate('adminlog',this)">Admin Log</div>
       </nav>
       <div class="sb-user" id="sidebarUser"></div>
     </aside>
@@ -459,11 +464,11 @@ function navigate(page, el) {
   currentPage = page;
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   if (el) el.classList.add('active');
-  const titles = { overview:'Dashboard', elections:'Elections', parties:'Parties', bills:'Bills', laws:'Laws', court:'Court', offices:'Offices', constitution:'Constitution', citizens:'Citizens', activity:'Activity', referendums:'Referendums', initiatives:'Citizen Initiatives', impeachments:'Impeachment Proceedings' };
+  const titles = { overview:'Dashboard', elections:'Elections', parties:'Parties', bills:'Bills', laws:'Laws', court:'Court', offices:'Offices', constitution:'Constitution', citizens:'Citizens', activity:'Activity', referendums:'Referendums', initiatives:'Citizen Initiatives', impeachments:'Impeachment Proceedings', treasury:'Treasury', adminlog:'Admin Audit Log' };
   document.getElementById('pageTitle').textContent = titles[page] || page;
   clearInterval(refreshTimer);
   if (!currentGuild) return sc('<div class="empty"><div class="empty-icon">🏛️</div><p>Select a server first.</p></div>');
-  const fns = { overview, elections, parties, bills, laws, court, offices, constitution, citizens, activity, referendums, initiatives, impeachments };
+  const fns = { overview, elections, parties, bills, laws, court, offices, constitution, citizens, activity, referendums, initiatives, impeachments, treasury, adminlog };
   if (fns[page]) { fns[page](); if (['overview','elections'].includes(page)) refreshTimer = setInterval(fns[page], 30000); }
 }
 
@@ -852,6 +857,95 @@ async function impeachments() {
       <thead><tr><th>#</th><th>Official</th><th>Office</th><th>Status</th><th>Votes</th><th>Charges</th><th>Filed</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
+  </div>`);
+}
+
+// TREASURY
+async function treasury() {
+  sc('<div class="spinner"></div>');
+  const data = await api(`/api/${currentGuild}/treasury`);
+  if (!data) return sc('<div class="card"><div class="empty"><div class="empty-icon">💰</div><p>Could not load treasury data.</p></div></div>');
+
+  const t = data.treasury;
+  const sym = t?.currency_symbol || '₡';
+  const cur = t?.currency_name || 'Credits';
+  const bal = t?.balance || 0;
+
+  const typeEmoji = { deposit:'📥', withdrawal:'📤', grant:'🎁', fine_collected:'⚖️', payment:'💸', transfer:'↔️' };
+  const typeSign  = { deposit:'+', fine_collected:'+', withdrawal:'-', grant:'-', payment:'-', transfer:'-' };
+
+  const txRows = (data.transactions || []).map(tx => {
+    const sign = typeSign[tx.type] || '';
+    const color = sign === '+' ? 'var(--green)' : 'var(--red)';
+    return `<tr>
+      <td>${typeEmoji[tx.type] || '💰'} ${esc(tx.type.replace('_',' '))}</td>
+      <td style="font-weight:500">${esc(tx.description)}</td>
+      <td>${tx.recipient_id ? mention(tx.recipient_id) : '—'}</td>
+      <td style="color:${color};font-variant-numeric:tabular-nums">${sign}${sym}${tx.amount.toLocaleString()}</td>
+      <td style="color:var(--muted);font-variant-numeric:tabular-nums">${sym}${tx.balance_after.toLocaleString()}</td>
+      <td style="color:var(--muted)">${ts(tx.created_at)}</td>
+    </tr>`;
+  }).join('');
+
+  const richRows = (data.richlist || []).map((w, i) => {
+    const medals = ['🥇','🥈','🥉'];
+    return `<tr>
+      <td>${medals[i] || i+1}</td>
+      <td>${mention(w.user_id)}</td>
+      <td style="font-weight:500;font-variant-numeric:tabular-nums">${sym}${w.balance.toLocaleString()}</td>
+    </tr>`;
+  }).join('');
+
+  sc(`
+    <div class="stat-grid" style="margin-bottom:1.25rem">
+      <div class="stat-card"><div class="stat-label">Treasury Balance</div><div class="stat-value" style="font-size:1.5rem">${sym}${bal.toLocaleString()}</div><div class="stat-sub">${cur}</div></div>
+      <div class="stat-card"><div class="stat-label">Transactions</div><div class="stat-value">${data.transactions?.length || 0}</div><div class="stat-sub">last 30</div></div>
+      <div class="stat-card"><div class="stat-label">Citizens w/ Funds</div><div class="stat-value">${data.richlist?.length || 0}</div></div>
+    </div>
+
+    <div class="cgrid">
+      <div class="card" style="grid-column:1/-1">
+        <div class="card-header"><div class="card-title">📒 Transaction Ledger</div><span class="card-meta">Last 30</span></div>
+        ${txRows ? `<div class="card-body-flush"><table class="tbl">
+          <thead><tr><th>Type</th><th>Description</th><th>Recipient</th><th>Amount</th><th>Balance After</th><th>Date</th></tr></thead>
+          <tbody>${txRows}</tbody>
+        </table></div>` : '<div class="empty"><div class="empty-icon">📒</div><p>No transactions yet. Use <code>/treasury deposit</code> to get started.</p></div>'}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><div class="card-title">🏆 Wealthiest Citizens</div></div>
+      ${richRows ? `<div class="card-body-flush"><table class="tbl">
+        <thead><tr><th>Rank</th><th>Citizen</th><th>Balance</th></tr></thead>
+        <tbody>${richRows}</tbody>
+      </table></div>` : '<div class="empty"><p>No citizens have funds yet.</p></div>'}
+    </div>
+  `);
+}
+
+// ADMIN LOG
+async function adminlog() {
+  sc('<div class="spinner"></div>');
+  const data = await api(`/api/${currentGuild}/admin-log`);
+  if (!data?.length) return sc('<div class="card"><div class="empty"><div class="empty-icon">📋</div><p>No admin actions recorded yet.</p></div></div>');
+
+  const rows = data.map(e => `<tr>
+    <td style="color:var(--faint)">${e.id}</td>
+    <td>${mention(e.admin_id)}</td>
+    <td><span class="badge badge-filed" style="font-family:monospace;font-size:0.65rem">${esc(e.action)}</span></td>
+    <td style="color:var(--muted)">${e.target ? esc(e.target) : '—'}</td>
+    <td style="color:var(--muted)">${e.reason ? esc(e.reason) : '—'}</td>
+    <td style="color:var(--muted)">${ts(e.logged_at)}</td>
+  </tr>`).join('');
+
+  sc(`<div class="card">
+    <div class="card-header"><div class="card-title">📋 Admin Audit Log</div><span class="card-meta">${data.length} entries</span></div>
+    <div class="card-body-flush">
+      <table class="tbl">
+        <thead><tr><th>#</th><th>Admin</th><th>Action</th><th>Target</th><th>Reason</th><th>Date</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
   </div>`);
 }
 
