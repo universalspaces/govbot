@@ -180,10 +180,44 @@ app.get('/api/:guildId/seat-distribution', requireAuth, (req, res) => {
   res.json(data);
 });
 
-// Election results history (for charts)
-app.get('/api/:guildId/election-history', requireAuth, (req, res) => {
-  const elections = db.prepare("SELECT * FROM elections WHERE guild_id = ? AND status = 'closed' ORDER BY id DESC LIMIT 10").all(req.params.guildId);
-  res.json(elections);
+// Referendums
+app.get('/api/:guildId/referendums', requireAuth, (req, res) => {
+  const refs = db.prepare('SELECT * FROM referendums WHERE guild_id = ? ORDER BY id DESC').all(req.params.guildId);
+  res.json(refs);
+});
+
+// Initiatives
+app.get('/api/:guildId/initiatives', requireAuth, (req, res) => {
+  const initiatives = db.prepare('SELECT * FROM initiatives WHERE guild_id = ? ORDER BY id DESC').all(req.params.guildId);
+  const enriched = initiatives.map(i => ({
+    ...i,
+    signature_count: db.prepare('SELECT COUNT(*) as cnt FROM initiative_signatures WHERE initiative_id = ?').get(i.id).cnt
+  }));
+  res.json(enriched);
+});
+
+// Impeachments
+app.get('/api/:guildId/impeachments', requireAuth, (req, res) => {
+  const procs = db.prepare('SELECT * FROM impeachments WHERE guild_id = ? ORDER BY id DESC').all(req.params.guildId);
+  res.json(procs);
+});
+
+// Term limits
+app.get('/api/:guildId/term-limits', requireAuth, (req, res) => {
+  const limits = db.prepare('SELECT * FROM term_limits WHERE guild_id = ?').all(req.params.guildId);
+  res.json(limits);
+});
+
+// Legislature stats
+app.get('/api/:guildId/legislature-stats', requireAuth, (req, res) => {
+  const guildId = req.params.guildId;
+  const stats = {
+    total: db.prepare('SELECT COUNT(*) as cnt FROM bills WHERE guild_id = ?').get(guildId).cnt,
+    passed: db.prepare("SELECT COUNT(*) as cnt FROM bills WHERE guild_id = ? AND status = 'passed'").get(guildId).cnt,
+    rejected: db.prepare("SELECT COUNT(*) as cnt FROM bills WHERE guild_id = ? AND status = 'rejected'").get(guildId).cnt,
+    pending: db.prepare("SELECT COUNT(*) as cnt FROM bills WHERE guild_id = ? AND status = 'proposed'").get(guildId).cnt,
+  };
+  res.json(stats);
 });
 
 // ─── CATCH-ALL ──────────────────────────────────────────────────────────────
