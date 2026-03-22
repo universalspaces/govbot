@@ -19,6 +19,11 @@ export default {
       .addChannelOption(o => o.setName('court').setDescription('Court channel').addChannelTypes(ChannelType.GuildText))
       .addChannelOption(o => o.setName('legislature').setDescription('Legislature channel').addChannelTypes(ChannelType.GuildText)))
     .addSubcommand(s => s
+      .setName('defaults')
+      .setDescription('Set default values for elections and signatures')
+      .addIntegerOption(o => o.setName('election_hours').setDescription('Default election duration in hours').setMinValue(1).setMaxValue(720))
+      .addIntegerOption(o => o.setName('initiative_signatures').setDescription('Default signatures required for citizen initiatives').setMinValue(1).setMaxValue(500)))
+    .addSubcommand(s => s
       .setName('view')
       .setDescription('View current server configuration')),
 
@@ -54,6 +59,23 @@ export default {
       if (legislature) lines.push(`🏛️ Legislature: ${legislature}`);
 
       return interaction.reply({ embeds: [successEmbed('Channels Updated', lines.join('\n') || 'No channels changed.', gid)] });
+    }
+
+    if (sub === 'defaults') {
+      const electionHours = interaction.options.getInteger('election_hours');
+      const initSigs = interaction.options.getInteger('initiative_signatures');
+      const changes = [];
+
+      if (electionHours) {
+        db.prepare('UPDATE server_config SET election_duration_hours = ? WHERE guild_id = ?').run(electionHours, gid);
+        changes.push(`⏱️ Default election duration: **${electionHours} hours**`);
+      }
+      if (initSigs) {
+        db.prepare('UPDATE server_config SET default_initiative_signatures = ? WHERE guild_id = ?').run(initSigs, gid);
+        changes.push(`✍️ Default initiative signatures: **${initSigs}**`);
+      }
+      if (changes.length === 0) return interaction.reply({ embeds: [errorEmbed('No changes provided.')], flags: 64 });
+      return interaction.reply({ embeds: [successEmbed('Defaults Updated', changes.join('\n'), gid)] });
     }
 
     if (sub === 'view') {
