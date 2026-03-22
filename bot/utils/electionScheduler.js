@@ -5,17 +5,26 @@ import { getElectionType, getOfficeName, runRCV } from '../commands/vote.js';
 export async function checkElections(client) {
   const now = Math.floor(Date.now() / 1000);
 
+  // Start scheduled elections
   const toStart = db.prepare(`SELECT * FROM elections WHERE status = 'scheduled' AND starts_at <= ?`).all(now);
   for (const election of toStart) {
     db.prepare(`UPDATE elections SET status = 'active' WHERE id = ?`).run(election.id);
     await announceElectionStart(client, election);
   }
 
+  // Close active elections
   const toEnd = db.prepare(`SELECT * FROM elections WHERE status = 'active' AND ends_at <= ?`).all(now);
   for (const election of toEnd) {
     await closeElection(client, election);
   }
 
+  // FIX: Auto-close expired referendums
+  const expiredRefs = db.prepare(`SELECT * FROM referendums WHERE status = 'active' AND ends_at <= ?`).all(now);
+  for (const ref of expiredRefs) {
+    await closeReferendum(client, ref);
+  }
+
+  // FIX: Removed redundant dynamic import — EmbedBuilder already imported at top
   // Fire DM reminders
   const dueReminders = db.prepare('SELECT * FROM election_reminders WHERE sent = 0 AND remind_at <= ?').all(now);
   for (const reminder of dueReminders) {
@@ -28,7 +37,6 @@ export async function checkElections(client) {
       }
       const user = await client.users.fetch(reminder.user_id).catch(() => null);
       if (user) {
-        const { EmbedBuilder } = await import('discord.js');
         await user.send({
           embeds: [new EmbedBuilder()
             .setColor(0xfee75c)
@@ -45,6 +53,9 @@ export async function checkElections(client) {
     db.prepare('UPDATE election_reminders SET sent = 1 WHERE guild_id = ? AND user_id = ? AND election_id = ?')
       .run(reminder.guild_id, reminder.user_id, reminder.election_id);
   }
+
+  // Expire overdue initiatives
+  db.prepare(`UPDATE initiatives SET status = 'expired' WHERE status = 'collecting' AND expires_at <= ?`).run(now);
 }
 
 async function announceElectionStart(client, election) {
@@ -62,7 +73,7 @@ async function announceElectionStart(client, election) {
       .setDescription(`**Office:** ${officeName}\n\nVoting is now open! Use \`/vote\` to cast your ballot.`)
       .addFields(
         { name: '🗳️ Voting System', value: type === 'rcv' ? '📊 Ranked Choice (RCV)' : '🥇 First Past the Post', inline: true },
-        { name: '📋 Candidates', value: candidates.length > 0 ? candidates.map(c => `<@${c.user_id}>`).join('\n') : 'No candidates', inline: false },
+        { name: '📋 Candidates', value: candidates.length > 0 ? candidates.map(c => `<@${c.user_id}>`).join('\n') : 'No candidates registered', inline: false },
         { name: '⏰ Ends', value: `<t:${election.ends_at}:F>`, inline: true }
       ).setTimestamp();
     await channel.send({ embeds: [embed] });
@@ -129,7 +140,6 @@ export async function closeElection(client, election) {
       if (office?.role_id) {
         try { const member = await guild.members.fetch(winnerUserId); await member.roles.add(office.role_id); } catch (e) {}
       }
-      // Archive previous holder
       if (office?.holder_id && office.holder_id !== winnerUserId && office.assumed_at) {
         db.prepare('INSERT INTO office_history (guild_id, office_name, user_id, assumed_at, vacated_at, reason) VALUES (?, ?, ?, ?, ?, ?)')
           .run(election.guild_id, officeName, office.holder_id, office.assumed_at, Math.floor(Date.now() / 1000), 'election_loss');
@@ -141,4 +151,34 @@ export async function closeElection(client, election) {
         .run(winnerUserId, Math.floor(Date.now() / 1000), election.guild_id, officeName);
     }
   } catch (e) { console.error('Failed to close election:', e); }
+}
+
+async function closeReferendum(client, ref) {
+  const total = ref.votes_yes + ref.votes_no + ref.votes_abstain;
+  const result = ref.votes_yes > ref.votes_no ? 'passed' : ref.votes_yes === ref.votes_no ? 'tied' : 'failed';
+  db.prepare(`UPDATE referendums SET status = 'closed', result = ? WHERE id = ?`).run(result, ref.id);
+
+  const config = db.prepare('SELECT * FROM server_config WHERE guild_id = ?').get(ref.guild_id);
+  const channelId = config?.election_channel;
+  if (!channelId) return;
+
+  try {
+    const guild = await client.guilds.fetch(ref.guild_id);
+    const channel = await guild.channels.fetch(channelId);
+    const yPct = total > 0 ? ((ref.votes_yes / total) * 100).toFixed(1) : '0.0';
+    const nPct = total > 0 ? ((ref.votes_no / total) * 100).toFixed(1) : '0.0';
+    const resultLabel = { passed: '✅ PASSED', failed: '❌ FAILED', tied: '🟡 TIED' };
+    const resultColor = { passed: 0x57f287, failed: 0xed4245, tied: 0xfee75c };
+
+    const embed = new EmbedBuilder()
+      .setColor(resultColor[result] || 0x2f3136)
+      .setTitle(`📊 Referendum Closed: ${ref.title}`)
+      .setDescription(`**Result: ${resultLabel[result]}**`)
+      .addFields(
+        { name: '✅ Yes', value: `${ref.votes_yes} (${yPct}%)`, inline: true },
+        { name: '❌ No', value: `${ref.votes_no} (${nPct}%)`, inline: true },
+        { name: '🗳️ Total', value: `${total}`, inline: true }
+      ).setTimestamp();
+    await channel.send({ embeds: [embed] });
+  } catch (e) { console.error('Failed to announce referendum close:', e); }
 }
