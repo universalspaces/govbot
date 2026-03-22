@@ -188,12 +188,15 @@ app.get('/api/:guildId/referendums', requireAuth, (req, res) => {
 
 // Initiatives
 app.get('/api/:guildId/initiatives', requireAuth, (req, res) => {
-  const initiatives = db.prepare('SELECT * FROM initiatives WHERE guild_id = ? ORDER BY id DESC').all(req.params.guildId);
-  const enriched = initiatives.map(i => ({
-    ...i,
-    signature_count: db.prepare('SELECT COUNT(*) as cnt FROM initiative_signatures WHERE initiative_id = ?').get(i.id).cnt
-  }));
-  res.json(enriched);
+  const initiatives = db.prepare(`
+    SELECT i.*, COUNT(s.signer_id) as signature_count
+    FROM initiatives i
+    LEFT JOIN initiative_signatures s ON i.id = s.initiative_id
+    WHERE i.guild_id = ?
+    GROUP BY i.id
+    ORDER BY i.id DESC
+  `).all(req.params.guildId);
+  res.json(initiatives);
 });
 
 // Impeachments
