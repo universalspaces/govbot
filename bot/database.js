@@ -19,6 +19,7 @@ db.exec(`
     legislature_channel TEXT,
     party_role_color INTEGER DEFAULT 0,
     election_duration_hours INTEGER DEFAULT 48,
+    default_initiative_signatures INTEGER DEFAULT 10,
     created_at INTEGER DEFAULT (unixepoch())
   );
 
@@ -177,6 +178,39 @@ db.exec(`
     currency_name TEXT DEFAULT 'Credits',
     currency_symbol TEXT DEFAULT '₡',
     last_updated INTEGER DEFAULT (unixepoch())
+  );
+
+  -- Treasury transactions log
+  CREATE TABLE IF NOT EXISTS treasury_transactions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT NOT NULL,
+    type TEXT NOT NULL,
+    amount INTEGER NOT NULL,
+    balance_after INTEGER NOT NULL,
+    description TEXT NOT NULL,
+    authorized_by TEXT NOT NULL,
+    recipient_id TEXT,
+    created_at INTEGER DEFAULT (unixepoch())
+  );
+
+  -- Citizen wallets
+  CREATE TABLE IF NOT EXISTS citizen_wallets (
+    guild_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    balance INTEGER DEFAULT 0,
+    PRIMARY KEY (guild_id, user_id)
+  );
+
+  -- Admin action log (separate from activity log — stricter audit trail)
+  CREATE TABLE IF NOT EXISTS admin_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT NOT NULL,
+    admin_id TEXT NOT NULL,
+    action TEXT NOT NULL,
+    target TEXT,
+    reason TEXT,
+    details TEXT,
+    logged_at INTEGER DEFAULT (unixepoch())
   );
 
   -- Constitutional Amendments
