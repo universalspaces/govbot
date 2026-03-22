@@ -316,5 +316,36 @@ export default {
           { name: `${sym} Recipient Balance`, value: `${sym}${toWalletAfter.balance.toLocaleString()}`, inline: true }
         )] });
     }
+
+    if (sub === 'send') {
+      const to = interaction.options.getUser('to');
+      const amount = interaction.options.getInteger('amount');
+      const desc = interaction.options.getString('description');
+
+      if (to.id === uid) return interaction.reply({ embeds: [errorEmbed('You cannot send funds to yourself.')], flags: 64 });
+
+      const senderWallet = getWallet(gid, uid);
+      if (senderWallet.balance < amount) {
+        return interaction.reply({ embeds: [errorEmbed(`You only have ${sym}${senderWallet.balance.toLocaleString()} in your wallet.`)], flags: 64 });
+      }
+
+      db.prepare('UPDATE citizen_wallets SET balance = balance - ? WHERE guild_id = ? AND user_id = ?').run(amount, gid, uid);
+      db.prepare('INSERT OR IGNORE INTO citizen_wallets (guild_id, user_id) VALUES (?, ?)').run(gid, to.id);
+      db.prepare('UPDATE citizen_wallets SET balance = balance + ? WHERE guild_id = ? AND user_id = ?').run(amount, gid, to.id);
+      logActivity(gid, 'CITIZEN_SEND', uid, to.id, `${sym}${amount}: ${desc}`);
+
+      const senderAfter = getWallet(gid, uid);
+      const recipientAfter = getWallet(gid, to.id);
+
+      return interaction.reply({ embeds: [new EmbedBuilder()
+        .setColor(0x57f287)
+        .setTitle('💸 Funds Sent')
+        .setDescription(`You sent ${sym}**${amount.toLocaleString()}** to <@${to.id}>`)
+        .addFields(
+          { name: '📝 Description', value: desc },
+          { name: `${sym} Your Balance`, value: `${sym}${senderAfter.balance.toLocaleString()}`, inline: true },
+          { name: `${sym} Recipient Balance`, value: `${sym}${recipientAfter.balance.toLocaleString()}`, inline: true }
+        )], flags: 64 });
+    }
   }
 };
