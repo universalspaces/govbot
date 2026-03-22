@@ -40,6 +40,10 @@ export default {
       .addStringOption(o => o.setName('role').setDescription('New role').setRequired(true)
         .addChoices({ name: 'Officer', value: 'officer' }, { name: 'Member', value: 'member' })))
     .addSubcommand(s => s
+      .setName('transfer')
+      .setDescription('Transfer party leadership to another member (leader only)')
+      .addUserOption(o => o.setName('member').setDescription('Member to transfer leadership to').setRequired(true)))
+    .addSubcommand(s => s
       .setName('disband')
       .setDescription('Disband your party (leader only)')),
 
@@ -97,13 +101,57 @@ export default {
     }
 
     if (sub === 'leave') {
-      const membership = db.prepare('SELECT pm.*, p.name, p.emoji, p.leader_id FROM party_members pm JOIN parties p ON pm.party_id = p.id WHERE pm.guild_id = ? AND pm.user_id = ?').get(gid, uid);
+      const membership = db.prepare('SELECT pm.*, p.name, p.emoji, p.leader_id, p.id as party_id FROM party_members pm JOIN parties p ON pm.party_id = p.id WHERE pm.guild_id = ? AND pm.user_id = ?').get(gid, uid);
       if (!membership) return interaction.reply({ embeds: [errorEmbed('You are not in a party.')], flags: 64 });
+
+      // If leader is leaving, auto-promote an officer or the longest-serving member
+      if (membership.role === 'leader') {
+        const nextLeader = db.prepare(`
+          SELECT * FROM party_members
+          WHERE party_id = ? AND user_id != ? AND role = 'officer'
+          ORDER BY joined_at ASC LIMIT 1
+        `).get(membership.party_id, uid)
+        || db.prepare(`
+          SELECT * FROM party_members
+          WHERE party_id = ? AND user_id != ?
+          ORDER BY joined_at ASC LIMIT 1
+        `).get(membership.party_id, uid);
+
+        if (nextLeader) {
+          db.prepare('UPDATE party_members SET role = ? WHERE guild_id = ? AND user_id = ?').run('leader', gid, nextLeader.user_id);
+          db.prepare('UPDATE parties SET leader_id = ? WHERE id = ?').run(nextLeader.user_id, membership.party_id);
+          db.prepare('DELETE FROM party_members WHERE guild_id = ? AND user_id = ?').run(gid, uid);
+          logActivity(gid, 'PARTY_LEAVE', uid, membership.name, `Leadership transferred to ${nextLeader.user_id}`);
+          return interaction.reply({ embeds: [successEmbed('Party Left', `You left **${membership.emoji} ${membership.name}**.\n\nLeadership has been automatically transferred to <@${nextLeader.user_id}>.`, gid)] });
+        } else {
+          // No members left — disband
+          db.prepare('DELETE FROM party_members WHERE party_id = ?').run(membership.party_id);
+          db.prepare('UPDATE parties SET is_active = 0 WHERE id = ?').run(membership.party_id);
+          logActivity(gid, 'PARTY_DISBANDED', uid, membership.name, 'Leader left with no members');
+          return interaction.reply({ embeds: [successEmbed('Party Dissolved', `You were the last member of **${membership.emoji} ${membership.name}**, so it has been dissolved.`, gid)] });
+        }
+      }
 
       db.prepare('DELETE FROM party_members WHERE guild_id = ? AND user_id = ?').run(gid, uid);
       logActivity(gid, 'PARTY_LEAVE', uid, membership.name, '');
-
       return interaction.reply({ embeds: [successEmbed('Party Left', `You left **${membership.emoji} ${membership.name}**.`, gid)] });
+    }
+
+    if (sub === 'transfer') {
+      const target = interaction.options.getUser('member');
+      const myMembership = db.prepare('SELECT pm.*, p.id as party_id FROM party_members pm JOIN parties p ON pm.party_id = p.id WHERE pm.guild_id = ? AND pm.user_id = ?').get(gid, uid);
+      if (!myMembership || myMembership.role !== 'leader') return interaction.reply({ embeds: [errorEmbed('Only the party leader can transfer leadership.')], flags: 64 });
+      if (target.id === uid) return interaction.reply({ embeds: [errorEmbed('You are already the leader.')], flags: 64 });
+
+      const targetMembership = db.prepare('SELECT * FROM party_members WHERE guild_id = ? AND user_id = ? AND party_id = ?').get(gid, target.id, myMembership.party_id);
+      if (!targetMembership) return interaction.reply({ embeds: [errorEmbed('That user is not in your party.')], flags: 64 });
+
+      db.prepare('UPDATE party_members SET role = ? WHERE guild_id = ? AND user_id = ?').run('member', gid, uid);
+      db.prepare('UPDATE party_members SET role = ? WHERE guild_id = ? AND user_id = ?').run('leader', gid, target.id);
+      db.prepare('UPDATE parties SET leader_id = ? WHERE id = ?').run(target.id, myMembership.party_id);
+      logActivity(gid, 'PARTY_LEADERSHIP_TRANSFERRED', uid, target.id, '');
+
+      return interaction.reply({ embeds: [successEmbed('Leadership Transferred', `<@${target.id}> is now the leader of the party.`, gid)] });
     }
 
     if (sub === 'info') {
