@@ -201,6 +201,132 @@ db.exec(`
     details TEXT,
     logged_at INTEGER DEFAULT (unixepoch())
   );
+
+  -- Ranked-choice vote preferences
+  CREATE TABLE IF NOT EXISTS rcv_votes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    election_id INTEGER NOT NULL,
+    voter_id TEXT NOT NULL,
+    preferences TEXT NOT NULL,
+    voted_at INTEGER DEFAULT (unixepoch()),
+    UNIQUE(election_id, voter_id),
+    FOREIGN KEY (election_id) REFERENCES elections(id)
+  );
+
+  -- Referendums
+  CREATE TABLE IF NOT EXISTS referendums (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    created_by TEXT NOT NULL,
+    status TEXT DEFAULT 'active',
+    votes_yes INTEGER DEFAULT 0,
+    votes_no INTEGER DEFAULT 0,
+    votes_abstain INTEGER DEFAULT 0,
+    created_at INTEGER DEFAULT (unixepoch()),
+    ends_at INTEGER,
+    result TEXT
+  );
+
+  -- Referendum votes
+  CREATE TABLE IF NOT EXISTS referendum_votes (
+    referendum_id INTEGER NOT NULL,
+    voter_id TEXT NOT NULL,
+    vote TEXT NOT NULL,
+    voted_at INTEGER DEFAULT (unixepoch()),
+    PRIMARY KEY (referendum_id, voter_id),
+    FOREIGN KEY (referendum_id) REFERENCES referendums(id)
+  );
+
+  -- Citizen Initiatives
+  CREATE TABLE IF NOT EXISTS initiatives (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    proposed_action TEXT NOT NULL,
+    type TEXT DEFAULT 'bill',
+    creator_id TEXT NOT NULL,
+    status TEXT DEFAULT 'collecting',
+    signatures_required INTEGER DEFAULT 10,
+    created_at INTEGER DEFAULT (unixepoch()),
+    expires_at INTEGER,
+    fulfilled_at INTEGER
+  );
+
+  -- Initiative signatures
+  CREATE TABLE IF NOT EXISTS initiative_signatures (
+    initiative_id INTEGER NOT NULL,
+    signer_id TEXT NOT NULL,
+    signed_at INTEGER DEFAULT (unixepoch()),
+    PRIMARY KEY (initiative_id, signer_id),
+    FOREIGN KEY (initiative_id) REFERENCES initiatives(id)
+  );
+
+  -- Impeachment proceedings
+  CREATE TABLE IF NOT EXISTS impeachments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    office TEXT NOT NULL,
+    charges TEXT NOT NULL,
+    brought_by TEXT NOT NULL,
+    status TEXT DEFAULT 'trial',
+    votes_convict INTEGER DEFAULT 0,
+    votes_acquit INTEGER DEFAULT 0,
+    votes_abstain INTEGER DEFAULT 0,
+    filed_at INTEGER DEFAULT (unixepoch()),
+    concluded_at INTEGER
+  );
+
+  -- Impeachment votes
+  CREATE TABLE IF NOT EXISTS impeachment_votes (
+    impeachment_id INTEGER NOT NULL,
+    voter_id TEXT NOT NULL,
+    vote TEXT NOT NULL,
+    voted_at INTEGER DEFAULT (unixepoch()),
+    PRIMARY KEY (impeachment_id, voter_id),
+    FOREIGN KEY (impeachment_id) REFERENCES impeachments(id)
+  );
+
+  -- Bill co-sponsors
+  CREATE TABLE IF NOT EXISTS bill_cosponsors (
+    bill_id INTEGER NOT NULL,
+    user_id TEXT NOT NULL,
+    cosigned_at INTEGER DEFAULT (unixepoch()),
+    PRIMARY KEY (bill_id, user_id),
+    FOREIGN KEY (bill_id) REFERENCES bills(id)
+  );
+
+  -- Term limit tracking (office hold history)
+  CREATE TABLE IF NOT EXISTS office_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT NOT NULL,
+    office_name TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    assumed_at INTEGER NOT NULL,
+    vacated_at INTEGER,
+    reason TEXT DEFAULT 'term_ended'
+  );
+
+  -- Term limits config per office
+  CREATE TABLE IF NOT EXISTS term_limits (
+    guild_id TEXT NOT NULL,
+    office_name TEXT NOT NULL,
+    max_terms INTEGER NOT NULL DEFAULT 2,
+    PRIMARY KEY (guild_id, office_name)
+  );
+
+  -- Election vote reminders (users who opted in)
+  CREATE TABLE IF NOT EXISTS election_reminders (
+    guild_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    election_id INTEGER NOT NULL,
+    remind_at INTEGER NOT NULL,
+    sent INTEGER DEFAULT 0,
+    PRIMARY KEY (guild_id, user_id, election_id)
+  );
 `);
 
 export default db;
