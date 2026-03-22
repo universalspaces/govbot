@@ -220,6 +220,25 @@ app.get('/api/:guildId/legislature-stats', requireAuth, (req, res) => {
   res.json(stats);
 });
 
+// Treasury
+app.get('/api/:guildId/treasury', requireAuth, (req, res) => {
+  const { guildId } = req.params;
+  db.prepare('INSERT OR IGNORE INTO treasury (guild_id) VALUES (?)').run(guildId);
+  const treasury = db.prepare('SELECT * FROM treasury WHERE guild_id = ?').get(guildId);
+  const transactions = db.prepare('SELECT * FROM treasury_transactions WHERE guild_id = ? ORDER BY id DESC LIMIT 30').all(guildId);
+  const richlist = db.prepare(`
+    SELECT cw.user_id, cw.balance FROM citizen_wallets cw
+    WHERE cw.guild_id = ? AND cw.balance > 0 ORDER BY cw.balance DESC LIMIT 10
+  `).all(guildId);
+  res.json({ treasury, transactions, richlist });
+});
+
+// Admin audit log
+app.get('/api/:guildId/admin-log', requireAuth, (req, res) => {
+  const log = db.prepare('SELECT * FROM admin_log WHERE guild_id = ? ORDER BY id DESC LIMIT 50').all(req.params.guildId);
+  res.json(log);
+});
+
 // ─── CATCH-ALL ──────────────────────────────────────────────────────────────
 app.get('/dashboard*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
