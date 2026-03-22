@@ -9,46 +9,51 @@ export default {
     const embed = new EmbedBuilder()
       .setColor(0x5865f2)
       .setTitle('🏛️ GovBot — Command Reference')
-      .setDescription('A comprehensive mock-government management bot. All commands use slash commands.')
+      .setDescription('A full mock-government management bot. All commands use slash commands.')
       .addFields(
         {
           name: '⚙️ Setup',
-          value: '`/setup government` — Set government name\n`/setup channels` — Configure channels\n`/setup view` — View configuration',
+          value: '`/setup government` — Set government name\n`/setup channels` — Configure channels\n`/setup defaults` — Set default election hours & initiative signatures\n`/setup view` — View configuration',
           inline: false
         },
         {
           name: '🗳️ Elections',
-          value: '`/election create` — Create an election (FPTP or RCV)\n`/election list` — List all elections\n`/election info` — Details & live results\n`/election register` — Run for office\n`/election open/close` — Control voting\n`/vote` — Cast your vote (supports ranked choices)',
+          value: '`/election create` — Create election (FPTP or RCV, optional scheduled start)\n`/election list/info` — View elections\n`/election register` — Run for office (term limits enforced)\n`/election withdraw` — Withdraw your candidacy\n`/election open/close` — Control voting\n`/election cancel` — Cancel & delete an election\n`/vote` — Cast your vote (up to 5 ranked choices for RCV)',
           inline: false
         },
         {
           name: '📊 Referendums',
-          value: '`/referendum create` — Call a yes/no referendum\n`/referendum vote` — Vote on a referendum\n`/referendum info` — Live tally\n`/referendum close` — Close & record result\n`/referendum list` — All referendums',
+          value: '`/referendum create` — Call a yes/no referendum (auto-closes at deadline)\n`/referendum vote` — Vote yes / no / abstain\n`/referendum info/list` — View referendums\n`/referendum close` — Manually close',
           inline: false
         },
         {
           name: '📣 Citizen Initiatives',
-          value: '`/initiative propose` — File an initiative\n`/initiative sign` — Sign an initiative\n`/initiative info` — Progress & signature bar\n`/initiative list` — All initiatives\n`/initiative withdraw` — Withdraw your initiative',
+          value: '`/initiative propose` — File an initiative\n`/initiative sign` — Sign to support\n`/initiative info/list` — View progress\n`/initiative withdraw` — Withdraw your initiative',
           inline: false
         },
         {
           name: '⚖️ Impeachment',
-          value: '`/impeach file` — File articles of impeachment\n`/impeach vote` — Vote convict / acquit / abstain\n`/impeach conclude` — Tally verdict & execute outcome\n`/impeach info` — Trial details\n`/impeach list` — All proceedings',
+          value: '`/impeach file` — File articles of impeachment\n`/impeach vote` — Vote convict / acquit / abstain\n`/impeach conclude` — Tally & execute verdict\n`/impeach info/list` — View proceedings',
           inline: false
         },
         {
           name: '🏛️ Political Parties',
-          value: '`/party create` — Found a party\n`/party join/leave` — Join or leave a party\n`/party info/list` — View party details\n`/party members` — View membership\n`/party promote` — Promote a member (leader only)\n`/party disband` — Dissolve the party (leader only)',
+          value: '`/party create` — Found a party\n`/party join/leave` — Join or leave\n`/party info/list/members` — View parties\n`/party promote` — Promote a member\n`/party transfer` — Transfer leadership to another member\n`/party disband` — Dissolve party',
           inline: false
         },
         {
           name: '📜 Legislature',
-          value: '`/bill propose` — Propose a bill\n`/bill cosponsor` — Co-sponsor a bill\n`/bill vote` — Vote yea / nay / abstain\n`/bill pass/reject` — Pass or reject a bill\n`/bill info/list` — View bills\n`/bill laws` — View enacted laws',
+          value: '`/bill propose` — Propose a bill\n`/bill amend` — Amend a bill (resets votes)\n`/bill cosponsor` — Co-sponsor a bill\n`/bill vote` — Vote yea / nay / abstain (changeable while open)\n`/bill pass/reject` — Pass or reject\n`/bill repeal` — Repeal an enacted law\n`/bill info/list/laws` — View bills & laws',
+          inline: false
+        },
+        {
+          name: '💰 Treasury',
+          value: '`/treasury balance` — View government balance & recent transactions\n`/treasury wallet` — View a citizen\'s wallet\n`/treasury transactions` — Full transaction ledger\n`/treasury richlist` — Wealthiest citizens\n`/treasury configure` — Set currency name & symbol *(Admin)*\n`/treasury deposit/withdraw` — Manage treasury funds *(Admin)*\n`/treasury grant/pay` — Send funds to a citizen *(Admin)*\n`/treasury fine` — Deduct from a citizen\'s wallet *(Admin)*\n`/treasury transfer` — Move funds between citizens *(Admin)*',
           inline: false
         },
         {
           name: '📋 Term Limits',
-          value: '`/termlimit set` — Set a term limit for an office\n`/termlimit remove` — Remove a term limit\n`/termlimit list` — All limits & current counts\n`/termlimit check` — Check a citizen\'s term history',
+          value: '`/termlimit set/remove` — Configure limits per office\n`/termlimit list` — All limits with current counts\n`/termlimit check` — View a citizen\'s term history',
           inline: false
         },
         {
@@ -63,7 +68,7 @@ export default {
         },
         {
           name: '📖 Constitution',
-          value: '`/constitution add` — Ratify an article\n`/constitution view` — Read articles\n`/constitution repeal` — Repeal an article',
+          value: '`/constitution add/repeal` — Manage articles\n`/constitution view` — Read articles',
           inline: false
         },
         {
@@ -73,16 +78,21 @@ export default {
         },
         {
           name: '📊 Stats & Analytics',
-          value: '`/stats turnout` — Voter turnout report for an election\n`/stats member` — Full political activity profile\n`/stats legislature` — Pass rates & top sponsors\n`/stats parties` — Party comparison breakdown',
+          value: '`/stats turnout` — Voter turnout report\n`/stats member` — Full political activity profile\n`/stats legislature` — Pass rates & top sponsors\n`/stats parties` — Party comparison breakdown',
+          inline: false
+        },
+        {
+          name: '🔧 Admin Tools',
+          value: '`/admin auditlog` — Admin action audit log\n`/admin announce` — Send official announcement\n`/admin server_stats` — Full server health check\n`/admin reset_citizen` — Remove a citizen registration\n`/admin remove_party_member` — Remove user from party\n`/admin dismiss_case` — Dismiss a court case\n`/admin close_referendum` — Force-close a referendum\n`/admin expire_initiative` — Expire an initiative\n`/admin set_reputation` — Set citizen reputation directly\n`/admin purge_elections` — Clean up old election data',
           inline: false
         },
         {
           name: '⏰ Reminders',
-          value: '`/remind set` — DM reminder before an election closes\n`/remind cancel` — Cancel a reminder\n`/remind list` — Your active reminders',
+          value: '`/remind set` — DM reminder before an election closes\n`/remind cancel/list` — Manage your reminders',
           inline: false
         }
       )
-      .setFooter({ text: 'GovBot • Use /government for a live overview • Dashboard available at your server URL' });
+      .setFooter({ text: 'GovBot • /government for a live overview • Dashboard at your server URL' });
 
     return interaction.reply({ embeds: [embed], flags: 64 });
   }
