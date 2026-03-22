@@ -13,7 +13,11 @@ export default {
       .addStringOption(o => o.setName('title').setDescription('Election title').setRequired(true))
       .addStringOption(o => o.setName('office').setDescription('Office being contested').setRequired(true))
       .addIntegerOption(o => o.setName('hours').setDescription('Voting duration in hours (default: 48)').setMinValue(1).setMaxValue(720))
-      .addStringOption(o => o.setName('description').setDescription('Election description')))
+      .addStringOption(o => o.setName('description').setDescription('Election description'))
+      .addStringOption(o => o.setName('type').setDescription('Voting system').addChoices(
+        { name: 'First Past the Post (default)', value: 'fptp' },
+        { name: 'Ranked Choice Voting (RCV)', value: 'rcv' }
+      )))
     .addSubcommand(s => s
       .setName('list')
       .setDescription('View all elections'))
@@ -50,6 +54,7 @@ export default {
       const title = interaction.options.getString('title');
       const office = interaction.options.getString('office');
       const description = interaction.options.getString('description') || '';
+      const type = interaction.options.getString('type') || 'fptp';
 
       const now = Math.floor(Date.now() / 1000);
       const endsAt = now + (hours * 3600);
@@ -57,9 +62,9 @@ export default {
       const result = db.prepare(`
         INSERT INTO elections (guild_id, title, office, description, status, starts_at, ends_at, created_by)
         VALUES (?, ?, ?, ?, 'registration', ?, ?, ?)
-      `).run(gid, title, office, description, now, endsAt, uid);
+      `).run(gid, title, `${office}|type:${type}`, description, now, endsAt, uid);
 
-      logActivity(gid, 'ELECTION_CREATED', uid, title, `Office: ${office}`);
+      logActivity(gid, 'ELECTION_CREATED', uid, title, `Office: ${office}, Type: ${type.toUpperCase()}`);
 
       const embed = new EmbedBuilder()
         .setColor(0x5865f2)
@@ -68,6 +73,7 @@ export default {
         .addFields(
           { name: '🏛️ Office', value: office, inline: true },
           { name: '🆔 Election ID', value: `#${result.lastInsertRowid}`, inline: true },
+          { name: '🗳️ Voting System', value: type === 'rcv' ? '📊 Ranked Choice' : '🥇 First Past the Post', inline: true },
           { name: '📋 Status', value: '`Registration Open`', inline: true },
           { name: '⏰ Voting Ends', value: `<t:${endsAt}:F>`, inline: false }
         )
@@ -166,6 +172,17 @@ export default {
       if (!election) return interaction.reply({ embeds: [errorEmbed(`Election #${id} not found.`)], ephemeral: true });
       if (!['registration', 'active'].includes(election.status)) {
         return interaction.reply({ embeds: [errorEmbed('Registration is not open for this election.')], ephemeral: true });
+      }
+
+      // Term limit check
+      const officeName = election.office.replace(/\|type:\w+/, '').trim();
+      const limit = db.prepare('SELECT * FROM term_limits WHERE guild_id = ? AND LOWER(office_name) = LOWER(?)').get(gid, officeName);
+      if (limit) {
+        const termsServed = db.prepare('SELECT COUNT(*) as cnt FROM office_history WHERE guild_id = ? AND office_name = ? AND user_id = ?')
+          .get(gid, officeName, uid).cnt;
+        if (termsServed >= limit.max_terms) {
+          return interaction.reply({ embeds: [errorEmbed(`You have served the maximum **${limit.max_terms}** term(s) as **${officeName}** and are ineligible to run again.`)], ephemeral: true });
+        }
       }
 
       const party = db.prepare('SELECT p.* FROM party_members pm JOIN parties p ON pm.party_id = p.id WHERE pm.guild_id = ? AND pm.user_id = ?').get(gid, uid);
