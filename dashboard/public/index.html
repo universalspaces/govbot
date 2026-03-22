@@ -390,6 +390,8 @@
 
         <div class="sb-group">Democracy</div>
         <div class="nav-item" onclick="navigate('elections',this)">Elections</div>
+        <div class="nav-item" onclick="navigate('referendums',this)">Referendums</div>
+        <div class="nav-item" onclick="navigate('initiatives',this)">Initiatives</div>
         <div class="nav-item" onclick="navigate('parties',this)">Parties</div>
         <div class="nav-item" onclick="navigate('citizens',this)">Citizens</div>
 
@@ -400,6 +402,7 @@
 
         <div class="sb-group">Institutions</div>
         <div class="nav-item" onclick="navigate('court',this)">Court</div>
+        <div class="nav-item" onclick="navigate('impeachments',this)">Impeachments</div>
         <div class="nav-item" onclick="navigate('offices',this)">Offices</div>
       </nav>
       <div class="sb-user" id="sidebarUser"></div>
@@ -456,11 +459,11 @@ function navigate(page, el) {
   currentPage = page;
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   if (el) el.classList.add('active');
-  const titles = { overview:'Dashboard', elections:'Elections', parties:'Parties', bills:'Bills', laws:'Laws', court:'Court', offices:'Offices', constitution:'Constitution', citizens:'Citizens', activity:'Activity' };
+  const titles = { overview:'Dashboard', elections:'Elections', parties:'Parties', bills:'Bills', laws:'Laws', court:'Court', offices:'Offices', constitution:'Constitution', citizens:'Citizens', activity:'Activity', referendums:'Referendums', initiatives:'Citizen Initiatives', impeachments:'Impeachment Proceedings' };
   document.getElementById('pageTitle').textContent = titles[page] || page;
   clearInterval(refreshTimer);
   if (!currentGuild) return sc('<div class="empty"><div class="empty-icon">🏛️</div><p>Select a server first.</p></div>');
-  const fns = { overview, elections, parties, bills, laws, court, offices, constitution, citizens, activity };
+  const fns = { overview, elections, parties, bills, laws, court, offices, constitution, citizens, activity, referendums, initiatives, impeachments };
   if (fns[page]) { fns[page](); if (['overview','elections'].includes(page)) refreshTimer = setInterval(fns[page], 30000); }
 }
 
@@ -740,6 +743,115 @@ async function activity() {
         </div>
       </div>`).join('')}
     </div>
+  </div>`);
+}
+
+// REFERENDUMS
+async function referendums() {
+  sc('<div class="spinner"></div>');
+  const data = await api(`/api/${currentGuild}/referendums`);
+  if (!data?.length) return sc('<div class="card"><div class="empty"><div class="empty-icon">🗳️</div><p>No referendums called yet. Use <code>/referendum create</code>.</p></div></div>');
+
+  const rows = data.map(r => {
+    const tot = r.votes_yes + r.votes_no + r.votes_abstain;
+    const yp = tot>0?(r.votes_yes/tot*100).toFixed(0):0;
+    const np = tot>0?(r.votes_no/tot*100).toFixed(0):0;
+    const ap = tot>0?(r.votes_abstain/tot*100).toFixed(0):0;
+    const resultBadge = r.result ? `<span class="badge badge-${r.result==='passed'?'passed':r.result==='failed'?'rejected':'filed'}">${r.result.toUpperCase()}</span>` : '—';
+    return `<tr>
+      <td style="color:var(--faint)">${r.id}</td>
+      <td style="font-weight:500">${esc(r.title)}</td>
+      <td>${badge(r.status)}</td>
+      <td style="min-width:130px">
+        <div style="font-size:0.7rem;display:flex;gap:0.6rem">
+          <span style="color:var(--green)">Y ${r.votes_yes}</span>
+          <span style="color:var(--red)">N ${r.votes_no}</span>
+          <span>A ${r.votes_abstain}</span>
+        </div>
+        <div class="vbar"><div class="vy" style="width:${yp}%"></div><div class="vn" style="width:${np}%"></div><div class="va" style="width:${ap}%"></div></div>
+      </td>
+      <td>${resultBadge}</td>
+      <td style="color:var(--muted)">${ts(r.ends_at)}</td>
+    </tr>`;
+  }).join('');
+
+  sc(`<div class="card">
+    <div class="card-header"><div class="card-title">Referendums</div><span class="card-meta">${data.length} total</span></div>
+    <table class="tbl">
+      <thead><tr><th>#</th><th>Question</th><th>Status</th><th>Votes</th><th>Result</th><th>Closes</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`);
+}
+
+// INITIATIVES
+async function initiatives() {
+  sc('<div class="spinner"></div>');
+  const data = await api(`/api/${currentGuild}/initiatives`);
+  if (!data?.length) return sc('<div class="card"><div class="empty"><div class="empty-icon">📣</div><p>No initiatives filed yet. Use <code>/initiative propose</code>.</p></div></div>');
+
+  const rows = data.map(i => {
+    const pct = Math.min(100, ((i.signature_count / i.signatures_required) * 100)).toFixed(0);
+    const filled = Math.round(pct / 10);
+    const bar = '█'.repeat(Math.min(10, filled)) + '░'.repeat(Math.max(0, 10-filled));
+    const statusBadgeMap = { collecting:'proposed', fulfilled:'passed', expired:'rejected', withdrawn:'closed' };
+    return `<tr>
+      <td style="color:var(--faint)">${i.id}</td>
+      <td style="font-weight:500">${esc(i.title)}</td>
+      <td>${mention(i.creator_id)}</td>
+      <td>${badge(statusBadgeMap[i.status] || i.status)}</td>
+      <td style="min-width:160px">
+        <div style="font-size:0.7rem;color:var(--muted);margin-bottom:3px">${i.signature_count} / ${i.signatures_required}</div>
+        <div class="prog"><div class="prog-fill" style="width:${pct}%"></div></div>
+      </td>
+      <td style="color:var(--muted)">${ts(i.expires_at)}</td>
+    </tr>`;
+  }).join('');
+
+  sc(`<div class="card">
+    <div class="card-header"><div class="card-title">Citizen Initiatives</div><span class="card-meta">${data.length} total</span></div>
+    <table class="tbl">
+      <thead><tr><th>#</th><th>Title</th><th>Filed By</th><th>Status</th><th>Signatures</th><th>Expires</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`);
+}
+
+// IMPEACHMENTS
+async function impeachments() {
+  sc('<div class="spinner"></div>');
+  const data = await api(`/api/${currentGuild}/impeachments`);
+  if (!data?.length) return sc('<div class="card"><div class="empty"><div class="empty-icon">⚖️</div><p>No impeachment proceedings on record.</p></div></div>');
+
+  const rows = data.map(p => {
+    const decisive = p.votes_convict + p.votes_acquit;
+    const cPct = decisive > 0 ? ((p.votes_convict / decisive)*100).toFixed(0) : 0;
+    const aPct = decisive > 0 ? ((p.votes_acquit / decisive)*100).toFixed(0) : 0;
+    const statusMap = { trial:'filed', convicted:'rejected', acquitted:'passed' };
+    return `<tr>
+      <td style="color:var(--faint)">${p.id}</td>
+      <td>${mention(p.target_id)}</td>
+      <td style="color:var(--muted)">${esc(p.office)}</td>
+      <td>${badge(statusMap[p.status] || p.status)}</td>
+      <td style="min-width:130px">
+        <div style="font-size:0.7rem;display:flex;gap:0.6rem">
+          <span style="color:var(--red)">C ${p.votes_convict}</span>
+          <span style="color:var(--green)">A ${p.votes_acquit}</span>
+          <span>Abs ${p.votes_abstain}</span>
+        </div>
+        <div class="vbar"><div class="vn" style="width:${cPct}%"></div><div class="vy" style="width:${aPct}%"></div></div>
+      </td>
+      <td style="color:var(--muted);font-size:0.72rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.charges)}</td>
+      <td style="color:var(--muted)">${ts(p.filed_at)}</td>
+    </tr>`;
+  }).join('');
+
+  sc(`<div class="card">
+    <div class="card-header"><div class="card-title">Impeachment Proceedings</div><span class="card-meta">${data.length} total</span></div>
+    <table class="tbl">
+      <thead><tr><th>#</th><th>Official</th><th>Office</th><th>Status</th><th>Votes</th><th>Charges</th><th>Filed</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
   </div>`);
 }
 
