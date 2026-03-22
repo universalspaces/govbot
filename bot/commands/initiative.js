@@ -176,14 +176,22 @@ export default {
     }
 
     if (sub === 'list') {
-      const initiatives = db.prepare(`SELECT * FROM initiatives WHERE guild_id = ? ORDER BY id DESC LIMIT 15`).all(gid);
+      // FIX: single query with signature counts (no N+1)
+      const initiatives = db.prepare(`
+        SELECT i.*, COUNT(s.signer_id) as sig_count
+        FROM initiatives i
+        LEFT JOIN initiative_signatures s ON i.id = s.initiative_id
+        WHERE i.guild_id = ?
+        GROUP BY i.id
+        ORDER BY i.id DESC LIMIT 15
+      `).all(gid);
+
       if (initiatives.length === 0) return interaction.reply({ embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle('📣 Citizen Initiatives').setDescription('No initiatives have been filed yet.')] });
 
       const statusEmoji = { collecting: '✍️', fulfilled: '✅', expired: '🔴', withdrawn: '🚫' };
-      const list = initiatives.map(i => {
-        const sigs = db.prepare('SELECT COUNT(*) as cnt FROM initiative_signatures WHERE initiative_id = ?').get(i.id).cnt;
-        return `${statusEmoji[i.status] || '⚪'} **#${i.id}** — ${i.title} *(${sigs}/${i.signatures_required} signatures)*`;
-      }).join('\n');
+      const list = initiatives.map(i =>
+        `${statusEmoji[i.status] || '⚪'} **#${i.id}** — ${i.title} *(${i.sig_count}/${i.signatures_required} signatures)*`
+      ).join('\n');
 
       return interaction.reply({ embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle('📣 Citizen Initiatives').setDescription(list)] });
     }
