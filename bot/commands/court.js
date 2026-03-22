@@ -73,12 +73,12 @@ export default {
 
     if (sub === 'assign') {
       if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
-        return interaction.reply({ embeds: [errorEmbed('You need Manage Server permissions.')], ephemeral: true });
+        return interaction.reply({ embeds: [errorEmbed('You need Manage Server permissions.')], flags: 64 });
       }
       const caseId = interaction.options.getInteger('case_id');
       const judge = interaction.options.getUser('judge');
       const courtCase = db.prepare('SELECT * FROM cases WHERE id = ? AND guild_id = ?').get(caseId, gid);
-      if (!courtCase) return interaction.reply({ embeds: [errorEmbed(`Case #${caseId} not found.`)], ephemeral: true });
+      if (!courtCase) return interaction.reply({ embeds: [errorEmbed(`Case #${caseId} not found.`)], flags: 64 });
 
       db.prepare(`UPDATE cases SET judge_id = ?, status = 'in_progress' WHERE id = ?`).run(judge.id, caseId);
       logActivity(gid, 'JUDGE_ASSIGNED', uid, `Case #${caseId}`, judge.id);
@@ -102,11 +102,11 @@ export default {
       const ruling = interaction.options.getString('ruling');
       const courtCase = db.prepare('SELECT * FROM cases WHERE id = ? AND guild_id = ?').get(caseId, gid);
 
-      if (!courtCase) return interaction.reply({ embeds: [errorEmbed(`Case #${caseId} not found.`)], ephemeral: true });
+      if (!courtCase) return interaction.reply({ embeds: [errorEmbed(`Case #${caseId} not found.`)], flags: 64 });
       if (courtCase.judge_id !== uid && !interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
-        return interaction.reply({ embeds: [errorEmbed('Only the assigned judge can issue a ruling.')], ephemeral: true });
+        return interaction.reply({ embeds: [errorEmbed('Only the assigned judge can issue a ruling.')], flags: 64 });
       }
-      if (courtCase.status === 'closed') return interaction.reply({ embeds: [errorEmbed('This case is already closed.')], ephemeral: true });
+      if (courtCase.status === 'closed') return interaction.reply({ embeds: [errorEmbed('This case is already closed.')], flags: 64 });
 
       const now = Math.floor(Date.now() / 1000);
       db.prepare(`UPDATE cases SET status = 'closed', verdict = ?, ruling = ?, ruled_at = ? WHERE id = ?`)
@@ -137,7 +137,7 @@ export default {
     if (sub === 'info') {
       const caseId = interaction.options.getInteger('case_id');
       const courtCase = db.prepare('SELECT * FROM cases WHERE id = ? AND guild_id = ?').get(caseId, gid);
-      if (!courtCase) return interaction.reply({ embeds: [errorEmbed(`Case #${caseId} not found.`)], ephemeral: true });
+      if (!courtCase) return interaction.reply({ embeds: [errorEmbed(`Case #${caseId} not found.`)], flags: 64 });
 
       const statusColors = { filed: 0xfee75c, in_progress: 0x5865f2, closed: 0x57f287 };
       const embed = new EmbedBuilder()

@@ -29,7 +29,7 @@ export default {
 
     if (sub === 'add') {
       if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-        return interaction.reply({ embeds: [errorEmbed('Administrator permissions required.')], ephemeral: true });
+        return interaction.reply({ embeds: [errorEmbed('Administrator permissions required.')], flags: 64 });
       }
       const articleNum = interaction.options.getInteger('article');
       const title = interaction.options.getString('title');
@@ -51,7 +51,7 @@ export default {
 
       if (articleNum) {
         const article = db.prepare('SELECT * FROM constitution WHERE guild_id = ? AND article_number = ? AND is_active = 1').get(gid, articleNum);
-        if (!article) return interaction.reply({ embeds: [errorEmbed(`Article ${articleNum} not found.`)], ephemeral: true });
+        if (!article) return interaction.reply({ embeds: [errorEmbed(`Article ${articleNum} not found.`)], flags: 64 });
 
         return interaction.reply({ embeds: [
           new EmbedBuilder()
@@ -78,11 +78,11 @@ export default {
 
     if (sub === 'repeal') {
       if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-        return interaction.reply({ embeds: [errorEmbed('Administrator permissions required.')], ephemeral: true });
+        return interaction.reply({ embeds: [errorEmbed('Administrator permissions required.')], flags: 64 });
       }
       const articleNum = interaction.options.getInteger('article');
       const article = db.prepare('SELECT * FROM constitution WHERE guild_id = ? AND article_number = ? AND is_active = 1').get(gid, articleNum);
-      if (!article) return interaction.reply({ embeds: [errorEmbed(`Article ${articleNum} not found.`)], ephemeral: true });
+      if (!article) return interaction.reply({ embeds: [errorEmbed(`Article ${articleNum} not found.`)], flags: 64 });
 
       db.prepare('UPDATE constitution SET is_active = 0 WHERE guild_id = ? AND article_number = ?').run(gid, articleNum);
       return interaction.reply({ embeds: [successEmbed('Article Repealed', `**Article ${articleNum}: ${article.title}** has been repealed from the constitution.`, gid)] });

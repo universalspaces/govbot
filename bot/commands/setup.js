@@ -24,7 +24,7 @@ export default {
 
   async execute(interaction) {
     if (!isAdmin(interaction.member)) {
-      return interaction.reply({ embeds: [errorEmbed('You need Administrator permissions.')], ephemeral: true });
+      return interaction.reply({ embeds: [errorEmbed('You need Administrator permissions.')], flags: 64 });
     }
 
     const sub = interaction.options.getSubcommand();

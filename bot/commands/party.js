@@ -57,9 +57,9 @@ export default {
       const emoji = interaction.options.getString('emoji') || '🏛️';
 
       const existing = db.prepare('SELECT * FROM party_members WHERE guild_id = ? AND user_id = ?').get(gid, uid);
-      if (existing) return interaction.reply({ embeds: [errorEmbed('You are already in a party. Leave it first with `/party leave`.')], ephemeral: true });
+      if (existing) return interaction.reply({ embeds: [errorEmbed('You are already in a party. Leave it first with `/party leave`.')], flags: 64 });
 
-      if (!/^#[0-9A-F]{6}$/i.test(color)) return interaction.reply({ embeds: [errorEmbed('Invalid hex color. Use format: #RRGGBB')], ephemeral: true });
+      if (!/^#[0-9A-F]{6}$/i.test(color)) return interaction.reply({ embeds: [errorEmbed('Invalid hex color. Use format: #RRGGBB')], flags: 64 });
 
       try {
         const result = db.prepare(`INSERT INTO parties (guild_id, name, abbreviation, description, ideology, color, emoji, leader_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
@@ -67,7 +67,7 @@ export default {
         db.prepare('INSERT INTO party_members (guild_id, user_id, party_id, role) VALUES (?, ?, ?, ?)').run(gid, uid, result.lastInsertRowid, 'leader');
         logActivity(gid, 'PARTY_CREATED', uid, name, ideology);
       } catch (e) {
-        return interaction.reply({ embeds: [errorEmbed(`A party named **${name}** already exists.`)], ephemeral: true });
+        return interaction.reply({ embeds: [errorEmbed(`A party named **${name}** already exists.`)], flags: 64 });
       }
 
       const embed = new EmbedBuilder()
@@ -85,10 +85,10 @@ export default {
     if (sub === 'join') {
       const name = interaction.options.getString('name');
       const party = db.prepare('SELECT * FROM parties WHERE guild_id = ? AND LOWER(name) = LOWER(?) AND is_active = 1').get(gid, name);
-      if (!party) return interaction.reply({ embeds: [errorEmbed(`Party **${name}** not found.`)], ephemeral: true });
+      if (!party) return interaction.reply({ embeds: [errorEmbed(`Party **${name}** not found.`)], flags: 64 });
 
       const existing = db.prepare('SELECT * FROM party_members WHERE guild_id = ? AND user_id = ?').get(gid, uid);
-      if (existing) return interaction.reply({ embeds: [errorEmbed('Leave your current party first with `/party leave`.')], ephemeral: true });
+      if (existing) return interaction.reply({ embeds: [errorEmbed('Leave your current party first with `/party leave`.')], flags: 64 });
 
       db.prepare('INSERT INTO party_members (guild_id, user_id, party_id, role) VALUES (?, ?, ?, ?)').run(gid, uid, party.id, 'member');
       logActivity(gid, 'PARTY_JOIN', uid, party.name, '');
@@ -98,7 +98,7 @@ export default {
 
     if (sub === 'leave') {
       const membership = db.prepare('SELECT pm.*, p.name, p.emoji, p.leader_id FROM party_members pm JOIN parties p ON pm.party_id = p.id WHERE pm.guild_id = ? AND pm.user_id = ?').get(gid, uid);
-      if (!membership) return interaction.reply({ embeds: [errorEmbed('You are not in a party.')], ephemeral: true });
+      if (!membership) return interaction.reply({ embeds: [errorEmbed('You are not in a party.')], flags: 64 });
 
       db.prepare('DELETE FROM party_members WHERE guild_id = ? AND user_id = ?').run(gid, uid);
       logActivity(gid, 'PARTY_LEAVE', uid, membership.name, '');
@@ -109,7 +109,7 @@ export default {
     if (sub === 'info') {
       const name = interaction.options.getString('name');
       const party = db.prepare('SELECT * FROM parties WHERE guild_id = ? AND LOWER(name) = LOWER(?) AND is_active = 1').get(gid, name);
-      if (!party) return interaction.reply({ embeds: [errorEmbed(`Party **${name}** not found.`)], ephemeral: true });
+      if (!party) return interaction.reply({ embeds: [errorEmbed(`Party **${name}** not found.`)], flags: 64 });
 
       const memberCount = db.prepare('SELECT COUNT(*) as cnt FROM party_members WHERE party_id = ?').get(party.id).cnt;
       const embed = new EmbedBuilder()
@@ -136,7 +136,7 @@ export default {
     if (sub === 'members') {
       const name = interaction.options.getString('name');
       const party = db.prepare('SELECT * FROM parties WHERE guild_id = ? AND LOWER(name) = LOWER(?) AND is_active = 1').get(gid, name);
-      if (!party) return interaction.reply({ embeds: [errorEmbed(`Party **${name}** not found.`)], ephemeral: true });
+      if (!party) return interaction.reply({ embeds: [errorEmbed(`Party **${name}** not found.`)], flags: 64 });
 
       const members = db.prepare('SELECT * FROM party_members WHERE party_id = ? ORDER BY role DESC').all(party.id);
       const roleEmoji = { leader: '👑', officer: '⭐', member: '▫️' };
@@ -149,10 +149,10 @@ export default {
       const target = interaction.options.getUser('member');
       const newRole = interaction.options.getString('role');
       const myMembership = db.prepare('SELECT * FROM party_members WHERE guild_id = ? AND user_id = ?').get(gid, uid);
-      if (!myMembership || myMembership.role !== 'leader') return interaction.reply({ embeds: [errorEmbed('Only the party leader can promote members.')], ephemeral: true });
+      if (!myMembership || myMembership.role !== 'leader') return interaction.reply({ embeds: [errorEmbed('Only the party leader can promote members.')], flags: 64 });
 
       const targetMembership = db.prepare('SELECT * FROM party_members WHERE guild_id = ? AND user_id = ? AND party_id = ?').get(gid, target.id, myMembership.party_id);
-      if (!targetMembership) return interaction.reply({ embeds: [errorEmbed('That user is not in your party.')], ephemeral: true });
+      if (!targetMembership) return interaction.reply({ embeds: [errorEmbed('That user is not in your party.')], flags: 64 });
 
       db.prepare('UPDATE party_members SET role = ? WHERE guild_id = ? AND user_id = ?').run(newRole, gid, target.id);
       return interaction.reply({ embeds: [successEmbed('Member Promoted', `<@${target.id}> is now an **${newRole}** of the party.`, gid)] });
@@ -160,7 +160,7 @@ export default {
 
     if (sub === 'disband') {
       const myMembership = db.prepare('SELECT pm.*, p.name FROM party_members pm JOIN parties p ON pm.party_id = p.id WHERE pm.guild_id = ? AND pm.user_id = ?').get(gid, uid);
-      if (!myMembership || myMembership.role !== 'leader') return interaction.reply({ embeds: [errorEmbed('Only the party leader can disband the party.')], ephemeral: true });
+      if (!myMembership || myMembership.role !== 'leader') return interaction.reply({ embeds: [errorEmbed('Only the party leader can disband the party.')], flags: 64 });
 
       db.prepare('DELETE FROM party_members WHERE party_id = ?').run(myMembership.party_id);
       db.prepare('UPDATE parties SET is_active = 0 WHERE id = ?').run(myMembership.party_id);

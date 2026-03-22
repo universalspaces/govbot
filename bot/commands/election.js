@@ -46,7 +46,7 @@ export default {
 
     if (sub === 'create') {
       if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
-        return interaction.reply({ embeds: [errorEmbed('You need Manage Server permissions.')], ephemeral: true });
+        return interaction.reply({ embeds: [errorEmbed('You need Manage Server permissions.')], flags: 64 });
       }
 
       const config = db.prepare('SELECT * FROM server_config WHERE guild_id = ?').get(gid);
@@ -86,7 +86,7 @@ export default {
 
       if (channel && channel.id !== interaction.channelId) {
         await channel.send({ embeds: [embed] });
-        return interaction.reply({ content: `✅ Election created and announced in ${channel}!`, ephemeral: true });
+        return interaction.reply({ content: `✅ Election created and announced in ${channel}!`, flags: 64 });
       }
       return interaction.reply({ embeds: [embed] });
     }
@@ -107,7 +107,7 @@ export default {
     if (sub === 'info') {
       const id = interaction.options.getInteger('id');
       const election = db.prepare('SELECT * FROM elections WHERE id = ? AND guild_id = ?').get(id, gid);
-      if (!election) return interaction.reply({ embeds: [errorEmbed(`Election #${id} not found.`)], ephemeral: true });
+      if (!election) return interaction.reply({ embeds: [errorEmbed(`Election #${id} not found.`)], flags: 64 });
 
       const candidates = db.prepare('SELECT * FROM candidates WHERE election_id = ? ORDER BY votes DESC').all(id);
       const totalVotes = candidates.reduce((s, c) => s + c.votes, 0);
@@ -139,12 +139,12 @@ export default {
 
     if (sub === 'open') {
       if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
-        return interaction.reply({ embeds: [errorEmbed('You need Manage Server permissions.')], ephemeral: true });
+        return interaction.reply({ embeds: [errorEmbed('You need Manage Server permissions.')], flags: 64 });
       }
       const id = interaction.options.getInteger('id');
       const election = db.prepare('SELECT * FROM elections WHERE id = ? AND guild_id = ?').get(id, gid);
-      if (!election) return interaction.reply({ embeds: [errorEmbed(`Election #${id} not found.`)], ephemeral: true });
-      if (election.status === 'active') return interaction.reply({ embeds: [errorEmbed('Election is already active.')], ephemeral: true });
+      if (!election) return interaction.reply({ embeds: [errorEmbed(`Election #${id} not found.`)], flags: 64 });
+      if (election.status === 'active') return interaction.reply({ embeds: [errorEmbed('Election is already active.')], flags: 64 });
 
       db.prepare(`UPDATE elections SET status = 'active', starts_at = ? WHERE id = ?`).run(Math.floor(Date.now() / 1000), id);
       return interaction.reply({ embeds: [successEmbed('Election Opened', `Election **#${id} — ${election.title}** is now open for voting! Use \`/vote ${id}\` to cast your ballot.`, gid)] });
@@ -152,12 +152,12 @@ export default {
 
     if (sub === 'close') {
       if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
-        return interaction.reply({ embeds: [errorEmbed('You need Manage Server permissions.')], ephemeral: true });
+        return interaction.reply({ embeds: [errorEmbed('You need Manage Server permissions.')], flags: 64 });
       }
       const id = interaction.options.getInteger('id');
       const election = db.prepare('SELECT * FROM elections WHERE id = ? AND guild_id = ?').get(id, gid);
-      if (!election) return interaction.reply({ embeds: [errorEmbed(`Election #${id} not found.`)], ephemeral: true });
-      if (election.status === 'closed') return interaction.reply({ embeds: [errorEmbed('Election is already closed.')], ephemeral: true });
+      if (!election) return interaction.reply({ embeds: [errorEmbed(`Election #${id} not found.`)], flags: 64 });
+      if (election.status === 'closed') return interaction.reply({ embeds: [errorEmbed('Election is already closed.')], flags: 64 });
 
       await interaction.deferReply();
       await closeElection(client, election);
@@ -169,9 +169,9 @@ export default {
       const platform = interaction.options.getString('platform') || 'No platform statement provided.';
       const election = db.prepare('SELECT * FROM elections WHERE id = ? AND guild_id = ?').get(id, gid);
 
-      if (!election) return interaction.reply({ embeds: [errorEmbed(`Election #${id} not found.`)], ephemeral: true });
+      if (!election) return interaction.reply({ embeds: [errorEmbed(`Election #${id} not found.`)], flags: 64 });
       if (!['registration', 'active'].includes(election.status)) {
-        return interaction.reply({ embeds: [errorEmbed('Registration is not open for this election.')], ephemeral: true });
+        return interaction.reply({ embeds: [errorEmbed('Registration is not open for this election.')], flags: 64 });
       }
 
       // Term limit check
@@ -181,7 +181,7 @@ export default {
         const termsServed = db.prepare('SELECT COUNT(*) as cnt FROM office_history WHERE guild_id = ? AND office_name = ? AND user_id = ?')
           .get(gid, officeName, uid).cnt;
         if (termsServed >= limit.max_terms) {
-          return interaction.reply({ embeds: [errorEmbed(`You have served the maximum **${limit.max_terms}** term(s) as **${officeName}** and are ineligible to run again.`)], ephemeral: true });
+          return interaction.reply({ embeds: [errorEmbed(`You have served the maximum **${limit.max_terms}** term(s) as **${officeName}** and are ineligible to run again.`)], flags: 64 });
         }
       }
 
@@ -191,7 +191,7 @@ export default {
         db.prepare(`INSERT INTO candidates (election_id, user_id, party_id, platform) VALUES (?, ?, ?, ?)`)
           .run(id, uid, party?.id || null, platform);
       } catch (e) {
-        return interaction.reply({ embeds: [errorEmbed('You are already registered in this election.')], ephemeral: true });
+        return interaction.reply({ embeds: [errorEmbed('You are already registered in this election.')], flags: 64 });
       }
 
       logActivity(gid, 'CANDIDATE_REGISTERED', uid, `Election #${id}`, platform);

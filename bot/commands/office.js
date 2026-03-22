@@ -34,7 +34,7 @@ export default {
 
     if (sub === 'create') {
       if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-        return interaction.reply({ embeds: [errorEmbed('Administrator permissions required.')], ephemeral: true });
+        return interaction.reply({ embeds: [errorEmbed('Administrator permissions required.')], flags: 64 });
       }
       const name = interaction.options.getString('name');
       const description = interaction.options.getString('description') || '';
@@ -46,7 +46,7 @@ export default {
         db.prepare('INSERT INTO offices (guild_id, name, description, role_id, term_length_days, is_elected) VALUES (?, ?, ?, ?, ?, ?)')
           .run(gid, name, description, role?.id || null, termDays, isElected ? 1 : 0);
       } catch (e) {
-        return interaction.reply({ embeds: [errorEmbed(`Office **${name}** already exists.`)], ephemeral: true });
+        return interaction.reply({ embeds: [errorEmbed(`Office **${name}** already exists.`)], flags: 64 });
       }
 
       const embed = new EmbedBuilder()
@@ -64,12 +64,12 @@ export default {
 
     if (sub === 'appoint') {
       if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
-        return interaction.reply({ embeds: [errorEmbed('Manage Server permissions required.')], ephemeral: true });
+        return interaction.reply({ embeds: [errorEmbed('Manage Server permissions required.')], flags: 64 });
       }
       const officeName = interaction.options.getString('office');
       const target = interaction.options.getUser('user');
       const office = db.prepare('SELECT * FROM offices WHERE guild_id = ? AND LOWER(name) = LOWER(?)').get(gid, officeName);
-      if (!office) return interaction.reply({ embeds: [errorEmbed(`Office **${officeName}** not found.`)], ephemeral: true });
+      if (!office) return interaction.reply({ embeds: [errorEmbed(`Office **${officeName}** not found.`)], flags: 64 });
 
       // Check term limits
       const limit = db.prepare('SELECT * FROM term_limits WHERE guild_id = ? AND LOWER(office_name) = LOWER(?)').get(gid, officeName);
@@ -77,7 +77,7 @@ export default {
         const termsServed = db.prepare('SELECT COUNT(*) as cnt FROM office_history WHERE guild_id = ? AND office_name = ? AND user_id = ?')
           .get(gid, office.name, target.id).cnt;
         if (termsServed >= limit.max_terms) {
-          return interaction.reply({ embeds: [errorEmbed(`<@${target.id}> has already served the maximum **${limit.max_terms}** term(s) as **${office.name}** and cannot be reappointed.`)], ephemeral: true });
+          return interaction.reply({ embeds: [errorEmbed(`<@${target.id}> has already served the maximum **${limit.max_terms}** term(s) as **${office.name}** and cannot be reappointed.`)], flags: 64 });
         }
       }
 
@@ -110,11 +110,11 @@ export default {
 
     if (sub === 'remove') {
       if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
-        return interaction.reply({ embeds: [errorEmbed('Manage Server permissions required.')], ephemeral: true });
+        return interaction.reply({ embeds: [errorEmbed('Manage Server permissions required.')], flags: 64 });
       }
       const officeName = interaction.options.getString('office');
       const office = db.prepare('SELECT * FROM offices WHERE guild_id = ? AND LOWER(name) = LOWER(?)').get(gid, officeName);
-      if (!office || !office.holder_id) return interaction.reply({ embeds: [errorEmbed(`Office **${officeName}** not found or is already vacant.`)], ephemeral: true });
+      if (!office || !office.holder_id) return interaction.reply({ embeds: [errorEmbed(`Office **${officeName}** not found or is already vacant.`)], flags: 64 });
 
       const prevHolder = office.holder_id;
       const now2 = Math.floor(Date.now() / 1000);

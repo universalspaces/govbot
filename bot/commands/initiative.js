@@ -46,7 +46,7 @@ export default {
 
     if (sub === 'propose') {
       const citizen = db.prepare('SELECT * FROM citizens WHERE guild_id = ? AND user_id = ?').get(gid, uid);
-      if (!citizen) return interaction.reply({ embeds: [errorEmbed('You must be a registered citizen to propose an initiative. Use `/citizen register` first.')], ephemeral: true });
+      if (!citizen) return interaction.reply({ embeds: [errorEmbed('You must be a registered citizen to propose an initiative. Use `/citizen register` first.')], flags: 64 });
 
       const title = interaction.options.getString('title');
       const description = interaction.options.getString('description');
@@ -88,22 +88,22 @@ export default {
     if (sub === 'sign') {
       const id = interaction.options.getInteger('id');
       const initiative = db.prepare('SELECT * FROM initiatives WHERE id = ? AND guild_id = ?').get(id, gid);
-      if (!initiative) return interaction.reply({ embeds: [errorEmbed(`Initiative #${id} not found.`)], ephemeral: true });
-      if (initiative.status !== 'collecting') return interaction.reply({ embeds: [errorEmbed('This initiative is no longer collecting signatures.')], ephemeral: true });
+      if (!initiative) return interaction.reply({ embeds: [errorEmbed(`Initiative #${id} not found.`)], flags: 64 });
+      if (initiative.status !== 'collecting') return interaction.reply({ embeds: [errorEmbed('This initiative is no longer collecting signatures.')], flags: 64 });
 
       const now = Math.floor(Date.now() / 1000);
       if (initiative.expires_at && now > initiative.expires_at) {
         db.prepare(`UPDATE initiatives SET status = 'expired' WHERE id = ?`).run(id);
-        return interaction.reply({ embeds: [errorEmbed('This initiative has expired.')], ephemeral: true });
+        return interaction.reply({ embeds: [errorEmbed('This initiative has expired.')], flags: 64 });
       }
 
       const citizen = db.prepare('SELECT * FROM citizens WHERE guild_id = ? AND user_id = ?').get(gid, uid);
-      if (!citizen) return interaction.reply({ embeds: [errorEmbed('You must be a registered citizen to sign an initiative.')], ephemeral: true });
+      if (!citizen) return interaction.reply({ embeds: [errorEmbed('You must be a registered citizen to sign an initiative.')], flags: 64 });
 
       try {
         db.prepare('INSERT INTO initiative_signatures (initiative_id, signer_id) VALUES (?, ?)').run(id, uid);
       } catch (e) {
-        return interaction.reply({ embeds: [errorEmbed('You have already signed this initiative.')], ephemeral: true });
+        return interaction.reply({ embeds: [errorEmbed('You have already signed this initiative.')], flags: 64 });
       }
 
       const signatureCount = db.prepare('SELECT COUNT(*) as cnt FROM initiative_signatures WHERE initiative_id = ?').get(id).cnt;
@@ -139,14 +139,14 @@ export default {
           `You signed **${initiative.title}**.\n\n✍️ **${signatureCount} / ${initiative.signatures_required}** signatures collected — **${remaining}** more needed.`,
           gid
         )],
-        ephemeral: true
+        flags: 64
       });
     }
 
     if (sub === 'info') {
       const id = interaction.options.getInteger('id');
       const initiative = db.prepare('SELECT * FROM initiatives WHERE id = ? AND guild_id = ?').get(id, gid);
-      if (!initiative) return interaction.reply({ embeds: [errorEmbed(`Initiative #${id} not found.`)], ephemeral: true });
+      if (!initiative) return interaction.reply({ embeds: [errorEmbed(`Initiative #${id} not found.`)], flags: 64 });
 
       const signatureCount = db.prepare('SELECT COUNT(*) as cnt FROM initiative_signatures WHERE initiative_id = ?').get(id).cnt;
       const pct = Math.min(100, ((signatureCount / initiative.signatures_required) * 100)).toFixed(0);
@@ -191,11 +191,11 @@ export default {
     if (sub === 'withdraw') {
       const id = interaction.options.getInteger('id');
       const initiative = db.prepare('SELECT * FROM initiatives WHERE id = ? AND guild_id = ?').get(id, gid);
-      if (!initiative) return interaction.reply({ embeds: [errorEmbed(`Initiative #${id} not found.`)], ephemeral: true });
+      if (!initiative) return interaction.reply({ embeds: [errorEmbed(`Initiative #${id} not found.`)], flags: 64 });
       if (initiative.creator_id !== uid && !interaction.member.permissions.has('ManageGuild')) {
-        return interaction.reply({ embeds: [errorEmbed('Only the initiative creator or an admin can withdraw this.')], ephemeral: true });
+        return interaction.reply({ embeds: [errorEmbed('Only the initiative creator or an admin can withdraw this.')], flags: 64 });
       }
-      if (initiative.status !== 'collecting') return interaction.reply({ embeds: [errorEmbed('This initiative cannot be withdrawn in its current state.')], ephemeral: true });
+      if (initiative.status !== 'collecting') return interaction.reply({ embeds: [errorEmbed('This initiative cannot be withdrawn in its current state.')], flags: 64 });
 
       db.prepare(`UPDATE initiatives SET status = 'withdrawn' WHERE id = ?`).run(id);
       logActivity(gid, 'INITIATIVE_WITHDRAWN', uid, initiative.title, '');

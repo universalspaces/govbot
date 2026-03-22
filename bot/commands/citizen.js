@@ -26,7 +26,7 @@ export default {
 
     if (sub === 'register') {
       const existing = db.prepare('SELECT * FROM citizens WHERE guild_id = ? AND user_id = ?').get(gid, uid);
-      if (existing) return interaction.reply({ embeds: [errorEmbed('You are already a registered citizen.')], ephemeral: true });
+      if (existing) return interaction.reply({ embeds: [errorEmbed('You are already a registered citizen.')], flags: 64 });
 
       const count = db.prepare('SELECT COUNT(*) as cnt FROM citizens WHERE guild_id = ?').get(gid).cnt;
       db.prepare('INSERT INTO citizens (guild_id, user_id, citizen_number) VALUES (?, ?, ?)').run(gid, uid, count + 1);
@@ -47,7 +47,7 @@ export default {
       const target = interaction.options.getUser('user') || interaction.user;
       const citizen = db.prepare('SELECT * FROM citizens WHERE guild_id = ? AND user_id = ?').get(gid, target.id);
 
-      if (!citizen) return interaction.reply({ embeds: [errorEmbed(`${target.username} is not a registered citizen.`)], ephemeral: true });
+      if (!citizen) return interaction.reply({ embeds: [errorEmbed(`${target.username} is not a registered citizen.`)], flags: 64 });
 
       const party = db.prepare('SELECT p.* FROM party_members pm JOIN parties p ON pm.party_id = p.id WHERE pm.guild_id = ? AND pm.user_id = ?').get(gid, target.id);
       const offices = db.prepare('SELECT * FROM offices WHERE guild_id = ? AND holder_id = ?').all(gid, target.id);
@@ -78,12 +78,12 @@ export default {
 
     if (sub === 'rep') {
       if (!interaction.member.permissions.has('ManageGuild')) {
-        return interaction.reply({ embeds: [errorEmbed('You need Manage Server permissions.')], ephemeral: true });
+        return interaction.reply({ embeds: [errorEmbed('You need Manage Server permissions.')], flags: 64 });
       }
       const target = interaction.options.getUser('user');
       const amount = interaction.options.getInteger('amount');
       const citizen = db.prepare('SELECT * FROM citizens WHERE guild_id = ? AND user_id = ?').get(gid, target.id);
-      if (!citizen) return interaction.reply({ embeds: [errorEmbed(`${target.username} is not a registered citizen.`)], ephemeral: true });
+      if (!citizen) return interaction.reply({ embeds: [errorEmbed(`${target.username} is not a registered citizen.`)], flags: 64 });
 
       db.prepare('UPDATE citizens SET reputation = reputation + ? WHERE guild_id = ? AND user_id = ?').run(amount, gid, target.id);
       const newRep = citizen.reputation + amount;

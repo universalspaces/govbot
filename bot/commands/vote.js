@@ -74,18 +74,18 @@ export default {
     const electionId = interaction.options.getInteger('election_id');
 
     const election = db.prepare('SELECT * FROM elections WHERE id = ? AND guild_id = ?').get(electionId, gid);
-    if (!election) return interaction.reply({ embeds: [errorEmbed(`Election #${electionId} not found.`)], ephemeral: true });
-    if (election.status !== 'active') return interaction.reply({ embeds: [errorEmbed('This election is not currently open for voting.')], ephemeral: true });
+    if (!election) return interaction.reply({ embeds: [errorEmbed(`Election #${electionId} not found.`)], flags: 64 });
+    if (election.status !== 'active') return interaction.reply({ embeds: [errorEmbed('This election is not currently open for voting.')], flags: 64 });
 
     const type = getElectionType(election);
     const candidate1 = interaction.options.getUser('candidate');
 
     if (type === 'fptp') {
       const existing = db.prepare('SELECT * FROM votes WHERE election_id = ? AND voter_id = ?').get(electionId, uid);
-      if (existing) return interaction.reply({ embeds: [errorEmbed('You have already voted in this election.')], ephemeral: true });
+      if (existing) return interaction.reply({ embeds: [errorEmbed('You have already voted in this election.')], flags: 64 });
 
       const candidate = db.prepare('SELECT * FROM candidates WHERE election_id = ? AND user_id = ?').get(electionId, candidate1.id);
-      if (!candidate) return interaction.reply({ embeds: [errorEmbed(`${candidate1.username} is not a candidate in this election.`)], ephemeral: true });
+      if (!candidate) return interaction.reply({ embeds: [errorEmbed(`${candidate1.username} is not a candidate in this election.`)], flags: 64 });
 
       db.prepare('INSERT INTO votes (election_id, voter_id, candidate_id) VALUES (?, ?, ?)').run(electionId, uid, candidate.id);
       db.prepare('UPDATE candidates SET votes = votes + 1 WHERE id = ?').run(candidate.id);
@@ -100,13 +100,13 @@ export default {
           .setDescription(`You voted for **${candidate1.username}** in **${election.title}**.`)
           .addFields({ name: '🏛️ Party', value: party ? `${party.emoji} ${party.name}` : 'Independent', inline: true })
           .setFooter({ text: 'Your vote has been recorded.' })],
-        ephemeral: true
+        flags: 64
       });
     }
 
     // RCV
     const existing = db.prepare('SELECT * FROM rcv_votes WHERE election_id = ? AND voter_id = ?').get(electionId, uid);
-    if (existing) return interaction.reply({ embeds: [errorEmbed('You have already voted in this election.')], ephemeral: true });
+    if (existing) return interaction.reply({ embeds: [errorEmbed('You have already voted in this election.')], flags: 64 });
 
     const allCandidates = db.prepare('SELECT * FROM candidates WHERE election_id = ?').all(electionId);
     const candidateMap = new Map(allCandidates.map(c => [c.user_id, c]));
@@ -122,8 +122,8 @@ export default {
     const seen = new Set();
     const preferences = [];
     for (const user of rankInputs) {
-      if (!candidateMap.has(user.id)) return interaction.reply({ embeds: [errorEmbed(`${user.username} is not a candidate.`)], ephemeral: true });
-      if (seen.has(user.id)) return interaction.reply({ embeds: [errorEmbed(`You ranked ${user.username} more than once.`)], ephemeral: true });
+      if (!candidateMap.has(user.id)) return interaction.reply({ embeds: [errorEmbed(`${user.username} is not a candidate.`)], flags: 64 });
+      if (seen.has(user.id)) return interaction.reply({ embeds: [errorEmbed(`You ranked ${user.username} more than once.`)], flags: 64 });
       seen.add(user.id);
       preferences.push(candidateMap.get(user.id).id);
     }
@@ -138,7 +138,7 @@ export default {
         .setDescription(`Your ballot for **${election.title}** has been recorded.`)
         .addFields({ name: '🏆 Your Rankings', value: rankInputs.map((u, i) => `**${i + 1}.** ${u.username}`).join('\n') })
         .setFooter({ text: 'Results use instant-runoff to find the majority winner.' })],
-      ephemeral: true
+      flags: 64
     });
   }
 };

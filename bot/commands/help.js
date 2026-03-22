@@ -84,6 +84,6 @@ export default {
       )
       .setFooter({ text: 'GovBot • Use /government for a live overview • Dashboard available at your server URL' });
 
-    return interaction.reply({ embeds: [embed], ephemeral: true });
+    return interaction.reply({ embeds: [embed], flags: 64 });
   }
 };

@@ -29,7 +29,7 @@ export default {
     if (sub === 'turnout') {
       const electionId = interaction.options.getInteger('election_id');
       const election = db.prepare('SELECT * FROM elections WHERE id = ? AND guild_id = ?').get(electionId, gid);
-      if (!election) return interaction.reply({ embeds: [{ color: 0xed4245, title: '❌ Error', description: `Election #${electionId} not found.` }], ephemeral: true });
+      if (!election) return interaction.reply({ embeds: [{ color: 0xed4245, title: '❌ Error', description: `Election #${electionId} not found.` }], flags: 64 });
 
       const isRCV = election.office?.includes('|type:rcv');
       const officeName = getOfficeName(election);

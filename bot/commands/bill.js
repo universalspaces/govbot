@@ -77,7 +77,7 @@ export default {
         const channel = await interaction.guild.channels.fetch(config.legislature_channel).catch(() => null);
         if (channel) {
           await channel.send({ embeds: [embed] });
-          return interaction.reply({ content: `✅ Bill proposed and posted in ${channel}!`, ephemeral: true });
+          return interaction.reply({ content: `✅ Bill proposed and posted in ${channel}!`, flags: 64 });
         }
       }
       return interaction.reply({ embeds: [embed] });
@@ -86,14 +86,14 @@ export default {
     if (sub === 'cosponsor') {
       const billId = interaction.options.getInteger('bill_id');
       const bill = db.prepare('SELECT * FROM bills WHERE id = ? AND guild_id = ?').get(billId, gid);
-      if (!bill) return interaction.reply({ embeds: [errorEmbed(`Bill #${billId} not found.`)], ephemeral: true });
-      if (bill.status !== 'proposed') return interaction.reply({ embeds: [errorEmbed('You can only co-sponsor bills that are still under consideration.')], ephemeral: true });
-      if (bill.sponsor_id === uid) return interaction.reply({ embeds: [errorEmbed('You are already the primary sponsor of this bill.')], ephemeral: true });
+      if (!bill) return interaction.reply({ embeds: [errorEmbed(`Bill #${billId} not found.`)], flags: 64 });
+      if (bill.status !== 'proposed') return interaction.reply({ embeds: [errorEmbed('You can only co-sponsor bills that are still under consideration.')], flags: 64 });
+      if (bill.sponsor_id === uid) return interaction.reply({ embeds: [errorEmbed('You are already the primary sponsor of this bill.')], flags: 64 });
 
       try {
         db.prepare('INSERT INTO bill_cosponsors (bill_id, user_id) VALUES (?, ?)').run(billId, uid);
       } catch (e) {
-        return interaction.reply({ embeds: [errorEmbed('You have already co-sponsored this bill.')], ephemeral: true });
+        return interaction.reply({ embeds: [errorEmbed('You have already co-sponsored this bill.')], flags: 64 });
       }
 
       const coCount = db.prepare('SELECT COUNT(*) as cnt FROM bill_cosponsors WHERE bill_id = ?').get(billId).cnt;
@@ -104,7 +104,7 @@ export default {
           `You co-sponsored **${bill.title}**.\n\n📜 This bill now has **${coCount}** co-sponsor(s).`,
           gid
         )],
-        ephemeral: true
+        flags: 64
       });
     }
 
@@ -113,11 +113,11 @@ export default {
       const vote = interaction.options.getString('vote');
       const bill = db.prepare('SELECT * FROM bills WHERE id = ? AND guild_id = ?').get(billId, gid);
 
-      if (!bill) return interaction.reply({ embeds: [errorEmbed(`Bill #${billId} not found.`)], ephemeral: true });
-      if (bill.status !== 'proposed') return interaction.reply({ embeds: [errorEmbed('This bill is no longer open for voting.')], ephemeral: true });
+      if (!bill) return interaction.reply({ embeds: [errorEmbed(`Bill #${billId} not found.`)], flags: 64 });
+      if (bill.status !== 'proposed') return interaction.reply({ embeds: [errorEmbed('This bill is no longer open for voting.')], flags: 64 });
 
       const existing = db.prepare('SELECT * FROM bill_votes WHERE bill_id = ? AND voter_id = ?').get(billId, uid);
-      if (existing) return interaction.reply({ embeds: [errorEmbed('You have already voted on this bill.')], ephemeral: true });
+      if (existing) return interaction.reply({ embeds: [errorEmbed('You have already voted on this bill.')], flags: 64 });
 
       db.prepare('INSERT INTO bill_votes (bill_id, voter_id, vote) VALUES (?, ?, ?)').run(billId, uid, vote);
       if (vote === 'yes') db.prepare('UPDATE bills SET votes_yes = votes_yes + 1 WHERE id = ?').run(billId);
@@ -129,17 +129,17 @@ export default {
         embeds: [successEmbed('Vote Recorded',
           `You voted **${emoji[vote]} ${vote.toUpperCase()}** on Bill #${billId}: **${bill.title}**`, gid
         )],
-        ephemeral: true
+        flags: 64
       });
     }
 
     if (sub === 'pass') {
       if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
-        return interaction.reply({ embeds: [errorEmbed('You need Manage Server permissions.')], ephemeral: true });
+        return interaction.reply({ embeds: [errorEmbed('You need Manage Server permissions.')], flags: 64 });
       }
       const billId = interaction.options.getInteger('bill_id');
       const bill = db.prepare('SELECT * FROM bills WHERE id = ? AND guild_id = ?').get(billId, gid);
-      if (!bill) return interaction.reply({ embeds: [errorEmbed(`Bill #${billId} not found.`)], ephemeral: true });
+      if (!bill) return interaction.reply({ embeds: [errorEmbed(`Bill #${billId} not found.`)], flags: 64 });
 
       const now = Math.floor(Date.now() / 1000);
       db.prepare(`UPDATE bills SET status = 'passed', voted_at = ? WHERE id = ?`).run(now, billId);
@@ -173,11 +173,11 @@ export default {
 
     if (sub === 'reject') {
       if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
-        return interaction.reply({ embeds: [errorEmbed('You need Manage Server permissions.')], ephemeral: true });
+        return interaction.reply({ embeds: [errorEmbed('You need Manage Server permissions.')], flags: 64 });
       }
       const billId = interaction.options.getInteger('bill_id');
       const bill = db.prepare('SELECT * FROM bills WHERE id = ? AND guild_id = ?').get(billId, gid);
-      if (!bill) return interaction.reply({ embeds: [errorEmbed(`Bill #${billId} not found.`)], ephemeral: true });
+      if (!bill) return interaction.reply({ embeds: [errorEmbed(`Bill #${billId} not found.`)], flags: 64 });
 
       db.prepare(`UPDATE bills SET status = 'rejected', voted_at = ? WHERE id = ?`).run(Math.floor(Date.now() / 1000), billId);
       logActivity(gid, 'BILL_REJECTED', uid, bill.title, '');
@@ -187,7 +187,7 @@ export default {
     if (sub === 'info') {
       const billId = interaction.options.getInteger('bill_id');
       const bill = db.prepare('SELECT * FROM bills WHERE id = ? AND guild_id = ?').get(billId, gid);
-      if (!bill) return interaction.reply({ embeds: [errorEmbed(`Bill #${billId} not found.`)], ephemeral: true });
+      if (!bill) return interaction.reply({ embeds: [errorEmbed(`Bill #${billId} not found.`)], flags: 64 });
 
       const cosponsors = db.prepare('SELECT * FROM bill_cosponsors WHERE bill_id = ?').all(billId);
       const cosponsorText = cosponsors

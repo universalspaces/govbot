@@ -42,7 +42,7 @@ export default {
 
     if (sub === 'file') {
       if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
-        return interaction.reply({ embeds: [errorEmbed('You need Manage Server permissions to file impeachment.')], ephemeral: true });
+        return interaction.reply({ embeds: [errorEmbed('You need Manage Server permissions to file impeachment.')], flags: 64 });
       }
 
       const official = interaction.options.getUser('official');
@@ -52,13 +52,13 @@ export default {
       // Verify the official actually holds that office
       const officeRecord = db.prepare('SELECT * FROM offices WHERE guild_id = ? AND LOWER(name) = LOWER(?) AND holder_id = ?').get(gid, office, official.id);
       if (!officeRecord) {
-        return interaction.reply({ embeds: [errorEmbed(`<@${official.id}> does not hold the office of **${office}**. Verify with \`/office list\`.`)], ephemeral: true });
+        return interaction.reply({ embeds: [errorEmbed(`<@${official.id}> does not hold the office of **${office}**. Verify with \`/office list\`.`)], flags: 64 });
       }
 
       // Check for existing active trial
       const existing = db.prepare(`SELECT * FROM impeachments WHERE guild_id = ? AND target_id = ? AND status = 'trial'`).get(gid, official.id);
       if (existing) {
-        return interaction.reply({ embeds: [errorEmbed(`There is already an active impeachment trial against <@${official.id}> (Case #${existing.id}).`)], ephemeral: true });
+        return interaction.reply({ embeds: [errorEmbed(`There is already an active impeachment trial against <@${official.id}> (Case #${existing.id}).`)], flags: 64 });
       }
 
       const result = db.prepare(`
@@ -88,7 +88,7 @@ export default {
 
       if (channel && channel.id !== interaction.channelId) {
         await channel.send({ embeds: [embed] });
-        return interaction.reply({ content: `⚖️ Impeachment filed and announced in ${channel}!`, ephemeral: true });
+        return interaction.reply({ content: `⚖️ Impeachment filed and announced in ${channel}!`, flags: 64 });
       }
       return interaction.reply({ embeds: [embed] });
     }
@@ -98,16 +98,16 @@ export default {
       const vote = interaction.options.getString('vote');
       const proceeding = db.prepare('SELECT * FROM impeachments WHERE id = ? AND guild_id = ?').get(id, gid);
 
-      if (!proceeding) return interaction.reply({ embeds: [errorEmbed(`Impeachment #${id} not found.`)], ephemeral: true });
-      if (proceeding.status !== 'trial') return interaction.reply({ embeds: [errorEmbed('This impeachment trial is no longer active.')], ephemeral: true });
+      if (!proceeding) return interaction.reply({ embeds: [errorEmbed(`Impeachment #${id} not found.`)], flags: 64 });
+      if (proceeding.status !== 'trial') return interaction.reply({ embeds: [errorEmbed('This impeachment trial is no longer active.')], flags: 64 });
 
       // Can't vote on your own impeachment
       if (proceeding.target_id === uid) {
-        return interaction.reply({ embeds: [errorEmbed('You cannot vote in your own impeachment trial.')], ephemeral: true });
+        return interaction.reply({ embeds: [errorEmbed('You cannot vote in your own impeachment trial.')], flags: 64 });
       }
 
       const existing = db.prepare('SELECT * FROM impeachment_votes WHERE impeachment_id = ? AND voter_id = ?').get(id, uid);
-      if (existing) return interaction.reply({ embeds: [errorEmbed('You have already voted in this proceeding.')], ephemeral: true });
+      if (existing) return interaction.reply({ embeds: [errorEmbed('You have already voted in this proceeding.')], flags: 64 });
 
       db.prepare('INSERT INTO impeachment_votes (impeachment_id, voter_id, vote) VALUES (?, ?, ?)').run(id, uid, vote);
 
@@ -118,19 +118,19 @@ export default {
       const voteLabel = { convict: '⚖️ CONVICT', acquit: '🛡️ ACQUIT', abstain: '⬛ ABSTAIN' };
       return interaction.reply({
         embeds: [successEmbed('Vote Recorded', `You voted **${voteLabel[vote]}** in the impeachment trial of <@${proceeding.target_id}>.`, gid)],
-        ephemeral: true
+        flags: 64
       });
     }
 
     if (sub === 'conclude') {
       if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
-        return interaction.reply({ embeds: [errorEmbed('You need Manage Server permissions.')], ephemeral: true });
+        return interaction.reply({ embeds: [errorEmbed('You need Manage Server permissions.')], flags: 64 });
       }
 
       const id = interaction.options.getInteger('id');
       const proceeding = db.prepare('SELECT * FROM impeachments WHERE id = ? AND guild_id = ?').get(id, gid);
-      if (!proceeding) return interaction.reply({ embeds: [errorEmbed(`Impeachment #${id} not found.`)], ephemeral: true });
-      if (proceeding.status !== 'trial') return interaction.reply({ embeds: [errorEmbed('This trial has already concluded.')], ephemeral: true });
+      if (!proceeding) return interaction.reply({ embeds: [errorEmbed(`Impeachment #${id} not found.`)], flags: 64 });
+      if (proceeding.status !== 'trial') return interaction.reply({ embeds: [errorEmbed('This trial has already concluded.')], flags: 64 });
 
       const total = proceeding.votes_convict + proceeding.votes_acquit + proceeding.votes_abstain;
       // Conviction requires a majority of convict+acquit votes (ignoring abstentions)
@@ -186,7 +186,7 @@ export default {
     if (sub === 'info') {
       const id = interaction.options.getInteger('id');
       const p = db.prepare('SELECT * FROM impeachments WHERE id = ? AND guild_id = ?').get(id, gid);
-      if (!p) return interaction.reply({ embeds: [errorEmbed(`Impeachment #${id} not found.`)], ephemeral: true });
+      if (!p) return interaction.reply({ embeds: [errorEmbed(`Impeachment #${id} not found.`)], flags: 64 });
 
       const total = p.votes_convict + p.votes_acquit + p.votes_abstain;
       const decisive = p.votes_convict + p.votes_acquit;

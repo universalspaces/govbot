@@ -31,14 +31,14 @@ export default {
 
     if (sub === 'set') {
       if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-        return interaction.reply({ embeds: [errorEmbed('Administrator permissions required.')], ephemeral: true });
+        return interaction.reply({ embeds: [errorEmbed('Administrator permissions required.')], flags: 64 });
       }
       const office = interaction.options.getString('office');
       const maxTerms = interaction.options.getInteger('max_terms');
 
       // Verify office exists
       const officeRecord = db.prepare('SELECT * FROM offices WHERE guild_id = ? AND LOWER(name) = LOWER(?)').get(gid, office);
-      if (!officeRecord) return interaction.reply({ embeds: [errorEmbed(`Office **${office}** not found. Create it first with \`/office create\`.`)], ephemeral: true });
+      if (!officeRecord) return interaction.reply({ embeds: [errorEmbed(`Office **${office}** not found. Create it first with \`/office create\`.`)], flags: 64 });
 
       db.prepare(`
         INSERT INTO term_limits (guild_id, office_name, max_terms)
@@ -57,11 +57,11 @@ export default {
 
     if (sub === 'remove') {
       if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-        return interaction.reply({ embeds: [errorEmbed('Administrator permissions required.')], ephemeral: true });
+        return interaction.reply({ embeds: [errorEmbed('Administrator permissions required.')], flags: 64 });
       }
       const office = interaction.options.getString('office');
       const result = db.prepare('DELETE FROM term_limits WHERE guild_id = ? AND LOWER(office_name) = LOWER(?)').run(gid, office);
-      if (result.changes === 0) return interaction.reply({ embeds: [errorEmbed(`No term limit found for **${office}**.`)], ephemeral: true });
+      if (result.changes === 0) return interaction.reply({ embeds: [errorEmbed(`No term limit found for **${office}**.`)], flags: 64 });
       return interaction.reply({ embeds: [successEmbed('Term Limit Removed', `Term limit for **${office}** has been removed.`, gid)] });
     }
 
