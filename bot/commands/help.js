@@ -22,6 +22,16 @@ export default {
           inline: false
         },
         {
+          name: '📊 Polls',
+          value: '`/poll create` — Create a multi-option informal poll (2–8 options, optional deadline & anonymous mode)\n`/poll vote` — Vote on a poll (changeable while open)\n`/poll info` — Live results with bar chart\n`/poll list` — All polls\n`/poll close` — Close early (creator or Admin)\n`/poll voters` — See who voted for what (non-anonymous only)',
+          inline: false
+        },
+        {
+          name: '📋 Recall Petitions',
+          value: '`/recall file` — File a recall petition against a current officeholder\n`/recall sign` — Sign a petition to support it\n`/recall info` — Petition details and progress\n`/recall list` — All recall petitions\n`/recall trigger` — Call a recall election once qualified (Admin)\n`/recall withdraw` — Withdraw a petition (creator or Admin)',
+          inline: false
+        },
+        {
           name: '📊 Referendums',
           value: '`/referendum create` — Call a yes/no referendum (auto-closes at deadline)\n`/referendum vote` — Vote yes / no / abstain\n`/referendum info/list` — View referendums\n`/referendum close` — Manually close',
           inline: false
@@ -43,12 +53,12 @@ export default {
         },
         {
           name: '📜 Legislature',
-          value: '`/bill propose` — Propose a bill\n`/bill amend` — Amend a bill (resets votes)\n`/bill cosponsor` — Co-sponsor a bill\n`/bill vote` — Vote yea / nay / abstain (changeable while open)\n`/bill pass/reject` — Pass or reject\n`/bill repeal` — Repeal an enacted law\n`/bill info/list/laws` — View bills & laws',
+          value: '`/bill propose` — Propose a bill (optional voting deadline & quorum)\n`/bill amend` — Amend a bill (resets votes)\n`/bill cosponsor` — Co-sponsor a bill\n`/bill vote` — Vote yea / nay / abstain (changeable while open)\n`/bill pass/reject` — Pass or reject (quorum enforced if set)\n`/bill repeal` — Repeal an enacted law\n`/bill info/list/laws` — View bills & laws',
           inline: false
         },
         {
           name: '💰 Treasury',
-          value: '`/treasury balance` — View government balance & recent transactions\n`/treasury wallet` — View a citizen\'s wallet\n`/treasury transactions` — Full transaction ledger\n`/treasury richlist` — Wealthiest citizens\n`/treasury configure` — Set currency name & symbol *(Admin)*\n`/treasury deposit/withdraw` — Manage treasury funds *(Admin)*\n`/treasury grant/pay` — Send funds to a citizen *(Admin)*\n`/treasury fine` — Deduct from a citizen\'s wallet *(Admin)*\n`/treasury transfer` — Move funds between citizens *(Admin)*',
+          value: '`/treasury balance` — View government balance & recent transactions\n`/treasury wallet` — View a citizen\'s wallet\n`/treasury transactions` — Full transaction ledger\n`/treasury richlist` — Wealthiest citizens\n`/treasury send` — Send funds to another citizen\n`/treasury configure` — Set currency name & symbol *(Admin)*\n`/treasury deposit/withdraw` — Manage treasury funds *(Admin)*\n`/treasury grant/pay` — Send funds to a citizen *(Admin)*\n`/treasury fine` — Deduct from a citizen\'s wallet *(Admin)*\n`/treasury transfer` — Move funds between citizens *(Admin)*',
           inline: false
         },
         {

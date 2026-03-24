@@ -364,6 +364,65 @@ db.exec(`
     sent INTEGER DEFAULT 0,
     PRIMARY KEY (guild_id, user_id, election_id)
   );
+
+  -- Polls (lightweight multi-option informal votes)
+  CREATE TABLE IF NOT EXISTS polls (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    created_by TEXT NOT NULL,
+    status TEXT DEFAULT 'active',
+    options TEXT NOT NULL,       -- JSON array of option labels
+    ends_at INTEGER,
+    created_at INTEGER DEFAULT (unixepoch()),
+    message_id TEXT,
+    channel_id TEXT,
+    anonymous INTEGER DEFAULT 0  -- 1 = hide who voted for what
+  );
+
+  -- Poll votes
+  CREATE TABLE IF NOT EXISTS poll_votes (
+    poll_id INTEGER NOT NULL,
+    voter_id TEXT NOT NULL,
+    option_index INTEGER NOT NULL,  -- index into the options JSON array
+    voted_at INTEGER DEFAULT (unixepoch()),
+    PRIMARY KEY (poll_id, voter_id),
+    FOREIGN KEY (poll_id) REFERENCES polls(id)
+  );
+
+  -- Bill voting config (deadline + quorum per bill)
+  CREATE TABLE IF NOT EXISTS bill_voting_config (
+    bill_id INTEGER PRIMARY KEY,
+    quorum INTEGER,          -- minimum votes required before pass/reject is valid
+    voting_deadline INTEGER, -- unix timestamp, NULL = no deadline
+    FOREIGN KEY (bill_id) REFERENCES bills(id)
+  );
+
+  -- Recall elections (citizen-driven by-elections for current officeholders)
+  CREATE TABLE IF NOT EXISTS recalls (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT NOT NULL,
+    target_id TEXT NOT NULL,       -- officeholder being recalled
+    office TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    creator_id TEXT NOT NULL,
+    status TEXT DEFAULT 'collecting', -- collecting, qualified, election_called, completed, failed
+    signatures_required INTEGER NOT NULL,
+    created_at INTEGER DEFAULT (unixepoch()),
+    expires_at INTEGER,
+    election_id INTEGER,           -- set when a recall election is triggered
+    FOREIGN KEY (election_id) REFERENCES elections(id)
+  );
+
+  -- Recall signatures
+  CREATE TABLE IF NOT EXISTS recall_signatures (
+    recall_id INTEGER NOT NULL,
+    signer_id TEXT NOT NULL,
+    signed_at INTEGER DEFAULT (unixepoch()),
+    PRIMARY KEY (recall_id, signer_id),
+    FOREIGN KEY (recall_id) REFERENCES recalls(id)
+  );
 `);
 
 export default db;

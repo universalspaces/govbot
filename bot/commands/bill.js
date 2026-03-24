@@ -10,7 +10,9 @@ export default {
       .setName('propose')
       .setDescription('Propose a new bill')
       .addStringOption(o => o.setName('title').setDescription('Bill title').setRequired(true))
-      .addStringOption(o => o.setName('content').setDescription('Bill content/text').setRequired(true)))
+      .addStringOption(o => o.setName('content').setDescription('Bill content/text').setRequired(true))
+      .addIntegerOption(o => o.setName('voting_hours').setDescription('Close voting after this many hours (omit for no deadline)').setMinValue(1).setMaxValue(720))
+      .addIntegerOption(o => o.setName('quorum').setDescription('Minimum votes required before the bill can pass or fail').setMinValue(1).setMaxValue(500)))
     .addSubcommand(s => s
       .setName('amend')
       .setDescription('Amend a bill before it passes (sponsor only or Admin)')
@@ -64,11 +66,23 @@ export default {
     if (sub === 'propose') {
       const title = interaction.options.getString('title');
       const content = interaction.options.getString('content');
+      const votingHours = interaction.options.getInteger('voting_hours');
+      const quorum = interaction.options.getInteger('quorum');
 
       const result = db.prepare(`INSERT INTO bills (guild_id, title, content, sponsor_id, status) VALUES (?, ?, ?, ?, 'proposed')`)
         .run(gid, title, content, uid);
       db.prepare('INSERT OR IGNORE INTO bill_cosponsors (bill_id, user_id) VALUES (?, ?)').run(result.lastInsertRowid, uid);
+
+      // Store deadline/quorum config if provided
+      if (votingHours || quorum) {
+        const deadline = votingHours ? Math.floor(Date.now() / 1000) + votingHours * 3600 : null;
+        db.prepare('INSERT INTO bill_voting_config (bill_id, quorum, voting_deadline) VALUES (?, ?, ?)').run(result.lastInsertRowid, quorum || null, deadline);
+      }
+
       logActivity(gid, 'BILL_PROPOSED', uid, title, '');
+
+      const deadlineText = votingHours ? `<t:${Math.floor(Date.now() / 1000) + votingHours * 3600}:F>` : 'No deadline';
+      const quorumText = quorum ? `${quorum} votes required` : 'No quorum';
 
       const embed = new EmbedBuilder()
         .setColor(0x5865f2)
@@ -77,7 +91,9 @@ export default {
         .addFields(
           { name: '🆔 Bill ID', value: `#${result.lastInsertRowid}`, inline: true },
           { name: '👤 Sponsor', value: `<@${uid}>`, inline: true },
-          { name: '📋 Status', value: 'PROPOSED', inline: true }
+          { name: '📋 Status', value: 'PROPOSED', inline: true },
+          { name: '⏰ Voting Deadline', value: deadlineText, inline: true },
+          { name: '🗳️ Quorum', value: quorumText, inline: true }
         )
         .setFooter({ text: `Co-sponsor: /bill cosponsor bill_id:${result.lastInsertRowid} · Vote: /bill vote` })
         .setTimestamp();
@@ -198,6 +214,15 @@ export default {
       if (!bill) return interaction.reply({ embeds: [errorEmbed(`Bill #${billId} not found.`)], flags: 64 });
       if (bill.status !== 'proposed') return interaction.reply({ embeds: [errorEmbed('This bill is not in a proposed state.')], flags: 64 });
 
+      // Check quorum
+      const votingConfig = db.prepare('SELECT * FROM bill_voting_config WHERE bill_id = ?').get(billId);
+      if (votingConfig?.quorum) {
+        const totalVotes = bill.votes_yes + bill.votes_no + bill.votes_abstain;
+        if (totalVotes < votingConfig.quorum) {
+          return interaction.reply({ embeds: [errorEmbed(`Quorum not met. This bill requires **${votingConfig.quorum}** votes before it can pass — only **${totalVotes}** cast so far.`)], flags: 64 });
+        }
+      }
+
       const now = Math.floor(Date.now() / 1000);
       db.prepare(`UPDATE bills SET status = 'passed', voted_at = ? WHERE id = ?`).run(now, billId);
       db.prepare('INSERT INTO laws (guild_id, title, content, bill_id, enacted_by, enacted_at) VALUES (?, ?, ?, ?, ?, ?)')
@@ -236,6 +261,15 @@ export default {
       if (!bill) return interaction.reply({ embeds: [errorEmbed(`Bill #${billId} not found.`)], flags: 64 });
       if (bill.status !== 'proposed') return interaction.reply({ embeds: [errorEmbed('This bill is not in a proposed state.')], flags: 64 });
 
+      // Check quorum
+      const votingConfig = db.prepare('SELECT * FROM bill_voting_config WHERE bill_id = ?').get(billId);
+      if (votingConfig?.quorum) {
+        const totalVotes = bill.votes_yes + bill.votes_no + bill.votes_abstain;
+        if (totalVotes < votingConfig.quorum) {
+          return interaction.reply({ embeds: [errorEmbed(`Quorum not met. This bill requires **${votingConfig.quorum}** votes before it can be rejected — only **${totalVotes}** cast so far.`)], flags: 64 });
+        }
+      }
+
       db.prepare(`UPDATE bills SET status = 'rejected', voted_at = ? WHERE id = ?`).run(Math.floor(Date.now() / 1000), billId);
       logActivity(gid, 'BILL_REJECTED', uid, bill.title, '');
       return interaction.reply({ embeds: [successEmbed('Bill Rejected', `Bill **#${billId} — ${bill.title}** has been rejected.`, gid)] });
@@ -273,8 +307,14 @@ export default {
 
       const cosponsors = db.prepare('SELECT * FROM bill_cosponsors WHERE bill_id = ?').all(billId);
       const cosponsorText = cosponsors.filter(c => c.user_id !== bill.sponsor_id).map(c => `<@${c.user_id}>`).join(', ') || 'None';
+      const votingConfig = db.prepare('SELECT * FROM bill_voting_config WHERE bill_id = ?').get(billId);
       const statusColors = { proposed: 0x5865f2, passed: 0x57f287, rejected: 0xed4245 };
       const total = bill.votes_yes + bill.votes_no + bill.votes_abstain;
+
+      const quorumMet = !votingConfig?.quorum || total >= votingConfig.quorum;
+      const quorumText = votingConfig?.quorum
+        ? `${total}/${votingConfig.quorum} ${quorumMet ? '✅ Met' : '⏳ Not yet met'}`
+        : 'No quorum set';
 
       const embed = new EmbedBuilder()
         .setColor(statusColors[bill.status] || 0x2f3136)
@@ -287,6 +327,8 @@ export default {
           { name: '✅ Yea', value: `${bill.votes_yes}`, inline: true },
           { name: '❌ Nay', value: `${bill.votes_no}`, inline: true },
           { name: '⬛ Abstain', value: `${bill.votes_abstain} / ${total} total`, inline: true },
+          { name: '🗳️ Quorum', value: quorumText, inline: true },
+          { name: '⏰ Voting Deadline', value: votingConfig?.voting_deadline ? `<t:${votingConfig.voting_deadline}:F>` : 'No deadline', inline: true },
           { name: '👥 Co-sponsors', value: cosponsorText }
         );
       return interaction.reply({ embeds: [embed] });

@@ -392,7 +392,9 @@
         <div class="sb-group">Democracy</div>
         <div class="nav-item" onclick="navigate('elections',this)">Elections</div>
         <div class="nav-item" onclick="navigate('referendums',this)">Referendums</div>
+        <div class="nav-item" onclick="navigate('polls',this)">Polls</div>
         <div class="nav-item" onclick="navigate('initiatives',this)">Initiatives</div>
+        <div class="nav-item" onclick="navigate('recalls',this)">Recalls</div>
         <div class="nav-item" onclick="navigate('parties',this)">Parties</div>
         <div class="nav-item" onclick="navigate('citizens',this)">Citizens</div>
 
@@ -464,11 +466,11 @@ function navigate(page, el) {
   currentPage = page;
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   if (el) el.classList.add('active');
-  const titles = { overview:'Dashboard', elections:'Elections', parties:'Parties', bills:'Bills', laws:'Laws', court:'Court', offices:'Offices', constitution:'Constitution', citizens:'Citizens', activity:'Activity', referendums:'Referendums', initiatives:'Citizen Initiatives', impeachments:'Impeachment Proceedings', treasury:'Treasury', adminlog:'Admin Audit Log' };
+  const titles = { overview:'Dashboard', elections:'Elections', parties:'Parties', bills:'Bills', laws:'Laws', court:'Court', offices:'Offices', constitution:'Constitution', citizens:'Citizens', activity:'Activity', referendums:'Referendums', initiatives:'Citizen Initiatives', impeachments:'Impeachment Proceedings', treasury:'Treasury', adminlog:'Admin Audit Log', polls:'Polls', recalls:'Recall Petitions' };
   document.getElementById('pageTitle').textContent = titles[page] || page;
   clearInterval(refreshTimer);
   if (!currentGuild) return sc('<div class="empty"><div class="empty-icon">🏛️</div><p>Select a server first.</p></div>');
-  const fns = { overview, elections, parties, bills, laws, court, offices, constitution, citizens, activity, referendums, initiatives, impeachments, treasury, adminlog };
+  const fns = { overview, elections, parties, bills, laws, court, offices, constitution, citizens, activity, referendums, initiatives, impeachments, treasury, adminlog, polls, recalls };
   if (fns[page]) { fns[page](); if (['overview','elections'].includes(page)) refreshTimer = setInterval(fns[page], 30000); }
 }
 
@@ -946,6 +948,92 @@ async function adminlog() {
         <tbody>${rows}</tbody>
       </table>
     </div>
+  </div>`);
+}
+
+// POLLS
+async function polls() {
+  sc('<div class="spinner"></div>');
+  const data = await api(`/api/${currentGuild}/polls`);
+  if (!data?.length) return sc('<div class="card"><div class="empty"><div class="empty-icon">📊</div><p>No polls created yet. Use <code>/poll create</code>.</p></div></div>');
+
+  const rows = data.map(p => {
+    const options = JSON.parse(p.options);
+    return `<tr>
+      <td style="color:var(--faint)">${p.id}</td>
+      <td style="font-weight:500">${esc(p.title)}</td>
+      <td style="color:var(--muted)">${options.length} options</td>
+      <td>${badge(p.status)}</td>
+      <td>${p.vote_count}</td>
+      <td>${p.anonymous ? '<span style="color:var(--amber)">Yes</span>' : 'No'}</td>
+      <td style="color:var(--muted)">${p.ends_at ? ts(p.ends_at) : '—'}</td>
+    </tr>`;
+  }).join('');
+
+  // Show active polls with bar charts
+  const activePolls = data.filter(p => p.status === 'active');
+  const activeHtml = activePolls.map(p => {
+    const options = JSON.parse(p.options);
+    const NUM_EMOJI = ['1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟'];
+    const bars = options.map((opt, i) => `
+      <div style="margin-bottom:0.6rem">
+        <div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:3px">
+          <span>${NUM_EMOJI[i] || (i+1)} ${esc(opt)}</span>
+          <span style="color:var(--muted)">${p.vote_count} votes total</span>
+        </div>
+        <div class="prog"><div class="prog-fill" style="width:0%"></div></div>
+      </div>`).join('');
+    return `<div class="lcard" style="border-left-color:var(--blue)">
+      <div class="lcard-header">
+        <div>
+          <div style="font-size:0.65rem;font-weight:600;color:var(--blue);letter-spacing:0.06em;text-transform:uppercase;margin-bottom:0.2rem">● Active</div>
+          <div class="lcard-title">${esc(p.title)}</div>
+          <div class="lcard-sub">${p.anonymous ? 'Anonymous · ' : ''}${p.ends_at ? `Closes ${ts(p.ends_at)}` : 'No deadline'}</div>
+        </div>
+        <div class="lcard-votes"><div class="lcard-votes-num">${p.vote_count}</div><div class="lcard-votes-label">votes</div></div>
+      </div>
+      <div style="padding:1rem 1.25rem">${bars}</div>
+    </div>`;
+  }).join('');
+
+  sc(`${activeHtml}<div class="card">
+    <div class="card-header"><div class="card-title">All Polls</div><span class="card-meta">${data.length} total</span></div>
+    <table class="tbl">
+      <thead><tr><th>#</th><th>Question</th><th>Options</th><th>Status</th><th>Votes</th><th>Anonymous</th><th>Closes</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`);
+}
+
+// RECALLS
+async function recalls() {
+  sc('<div class="spinner"></div>');
+  const data = await api(`/api/${currentGuild}/recalls`);
+  if (!data?.length) return sc('<div class="card"><div class="empty"><div class="empty-icon">📋</div><p>No recall petitions on record. Use <code>/recall file</code>.</p></div></div>');
+
+  const statusMap = { collecting:'proposed', qualified:'active', election_called:'passed', completed:'passed', failed:'rejected' };
+  const rows = data.map(r => {
+    const pct = Math.min(100, ((r.sig_count / r.signatures_required) * 100)).toFixed(0);
+    return `<tr>
+      <td style="color:var(--faint)">${r.id}</td>
+      <td>${mention(r.target_id)}</td>
+      <td style="color:var(--muted)">${esc(r.office)}</td>
+      <td>${badge(statusMap[r.status] || r.status)}</td>
+      <td style="min-width:140px">
+        <div style="font-size:0.7rem;color:var(--muted);margin-bottom:3px">${r.sig_count} / ${r.signatures_required}</div>
+        <div class="prog"><div class="prog-fill" style="width:${pct}%"></div></div>
+      </td>
+      <td style="color:var(--muted);font-size:0.72rem;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.reason)}</td>
+      <td style="color:var(--muted)">${ts(r.expires_at)}</td>
+    </tr>`;
+  }).join('');
+
+  sc(`<div class="card">
+    <div class="card-header"><div class="card-title">Recall Petitions</div><span class="card-meta">${data.length} total</span></div>
+    <table class="tbl">
+      <thead><tr><th>#</th><th>Target</th><th>Office</th><th>Status</th><th>Signatures</th><th>Reason</th><th>Expires</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
   </div>`);
 }
 

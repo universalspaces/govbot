@@ -242,6 +242,42 @@ app.get('/api/:guildId/admin-log', requireAuth, (req, res) => {
   res.json(log);
 });
 
+// Polls
+app.get('/api/:guildId/polls', requireAuth, (req, res) => {
+  const polls = db.prepare(`
+    SELECT p.*, COUNT(pv.voter_id) as vote_count
+    FROM polls p
+    LEFT JOIN poll_votes pv ON p.id = pv.poll_id
+    WHERE p.guild_id = ?
+    GROUP BY p.id
+    ORDER BY p.id DESC
+  `).all(req.params.guildId);
+  res.json(polls);
+});
+
+app.get('/api/:guildId/polls/:id', requireAuth, (req, res) => {
+  const poll = db.prepare('SELECT * FROM polls WHERE id = ? AND guild_id = ?').get(req.params.id, req.params.guildId);
+  if (!poll) return res.status(404).json({ error: 'Not found' });
+  const votes = db.prepare('SELECT * FROM poll_votes WHERE poll_id = ?').all(poll.id);
+  const options = JSON.parse(poll.options);
+  const counts = new Array(options.length).fill(0);
+  for (const v of votes) counts[v.option_index]++;
+  res.json({ ...poll, vote_count: votes.length, counts });
+});
+
+// Recalls
+app.get('/api/:guildId/recalls', requireAuth, (req, res) => {
+  const recalls = db.prepare(`
+    SELECT r.*, COUNT(s.signer_id) as sig_count
+    FROM recalls r
+    LEFT JOIN recall_signatures s ON r.id = s.recall_id
+    WHERE r.guild_id = ?
+    GROUP BY r.id
+    ORDER BY r.id DESC
+  `).all(req.params.guildId);
+  res.json(recalls);
+});
+
 // ─── CATCH-ALL ──────────────────────────────────────────────────────────────
 app.get('/dashboard*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));

@@ -56,6 +56,72 @@ export async function checkElections(client) {
 
   // Expire overdue initiatives
   db.prepare(`UPDATE initiatives SET status = 'expired' WHERE status = 'collecting' AND expires_at <= ?`).run(now);
+
+  // Auto-reject bills past their voting deadline
+  const expiredBills = db.prepare(`
+    SELECT b.* FROM bills b
+    JOIN bill_voting_config bvc ON b.id = bvc.bill_id
+    WHERE b.status = 'proposed' AND bvc.voting_deadline <= ? AND bvc.voting_deadline IS NOT NULL
+  `).all(now);
+
+  for (const bill of expiredBills) {
+    db.prepare(`UPDATE bills SET status = 'rejected', voted_at = ? WHERE id = ?`).run(now, bill.id);
+    const config = db.prepare('SELECT * FROM server_config WHERE guild_id = ?').get(bill.guild_id);
+    if (config?.legislature_channel) {
+      try {
+        const guild = await client.guilds.fetch(bill.guild_id);
+        const channel = await guild.channels.fetch(config.legislature_channel);
+        await channel.send({
+          embeds: [new EmbedBuilder()
+            .setColor(0xed4245)
+            .setTitle(`⏰ Bill Expired: ${bill.title}`)
+            .setDescription(`Bill **#${bill.id}** was automatically rejected — the voting deadline passed with no action taken.`)
+            .addFields(
+              { name: '✅ Yea', value: `${bill.votes_yes}`, inline: true },
+              { name: '❌ Nay', value: `${bill.votes_no}`, inline: true },
+              { name: '⬛ Abstain', value: `${bill.votes_abstain}`, inline: true }
+            ).setTimestamp()]
+        });
+      } catch (e) { /* channel may not exist */ }
+    }
+  }
+
+  // Expire overdue recall petitions
+  db.prepare(`UPDATE recalls SET status = 'failed' WHERE status IN ('collecting','qualified') AND expires_at <= ?`).run(now);
+
+  // Auto-close polls past their deadline
+  const expiredPolls = db.prepare(`SELECT * FROM polls WHERE status = 'active' AND ends_at <= ? AND ends_at IS NOT NULL`).all(now);
+  for (const poll of expiredPolls) {
+    db.prepare(`UPDATE polls SET status = 'closed' WHERE id = ?`).run(poll.id);
+    // Update the original poll message if we stored it
+    if (poll.message_id && poll.channel_id) {
+      try {
+        const guild = await client.guilds.fetch(poll.guild_id);
+        const channel = await guild.channels.fetch(poll.channel_id);
+        const msg = await channel.messages.fetch(poll.message_id);
+        const votes = db.prepare('SELECT * FROM poll_votes WHERE poll_id = ?').all(poll.id);
+        const options = JSON.parse(poll.options);
+        const totalVotes = votes.length;
+        const counts = new Array(options.length).fill(0);
+        for (const v of votes) counts[v.option_index]++;
+        const NUM_EMOJI = ['1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟'];
+        const lines = options.map((opt, i) => {
+          const pct = totalVotes > 0 ? ((counts[i] / totalVotes) * 100).toFixed(1) : '0.0';
+          const filled = Math.round(parseFloat(pct) / 10);
+          const bar = '█'.repeat(filled) + '░'.repeat(10 - filled);
+          return `${NUM_EMOJI[i]} **${opt}**\n\`${bar}\` ${counts[i]} votes (${pct}%)`;
+        }).join('\n\n');
+        await msg.edit({
+          embeds: [new EmbedBuilder()
+            .setColor(0x57f287)
+            .setTitle(`📊 Poll Closed: ${poll.title}`)
+            .setDescription((poll.description ? poll.description + '\n\n' : '') + lines)
+            .addFields({ name: '🗳️ Total Votes', value: `${totalVotes}`, inline: true }, { name: '📋 Status', value: 'CLOSED', inline: true })
+            .setTimestamp()]
+        });
+      } catch (e) { /* message may have been deleted */ }
+    }
+  }
 }
 
 async function announceElectionStart(client, election) {
