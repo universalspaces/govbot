@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, PermissionFlagsBits, ChannelType } from 'discord.js';
+import { SlashCommandBuilder, PermissionFlagsBits, ChannelType, EmbedBuilder } from 'discord.js';
 import db from '../database.js';
 import { successEmbed, errorEmbed, isAdmin } from '../utils/helpers.js';
 
@@ -80,7 +80,6 @@ export default {
 
     if (sub === 'view') {
       const config = db.prepare('SELECT * FROM server_config WHERE guild_id = ?').get(gid);
-      const { EmbedBuilder } = await import('discord.js');
       const embed = new EmbedBuilder()
         .setColor(0x5865f2)
         .setTitle(`⚙️ Server Configuration — ${config.government_name}`)

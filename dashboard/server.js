@@ -82,20 +82,28 @@ app.get('/auth/me', (req, res) => {
 
 // Government overview
 app.get('/api/:guildId/overview', requireAuth, (req, res) => {
-  const { guildId } = req.params;
-  const config = db.prepare('SELECT * FROM server_config WHERE guild_id = ?').get(guildId);
-  const treasury = db.prepare('SELECT * FROM treasury WHERE guild_id = ?').get(guildId);
-  const stats = {
-    citizens: db.prepare('SELECT COUNT(*) as cnt FROM citizens WHERE guild_id = ?').get(guildId).cnt,
-    parties: db.prepare('SELECT COUNT(*) as cnt FROM parties WHERE guild_id = ? AND is_active = 1').get(guildId).cnt,
-    laws: db.prepare("SELECT COUNT(*) as cnt FROM laws WHERE guild_id = ? AND is_active = 1").get(guildId).cnt,
-    activeElections: db.prepare("SELECT COUNT(*) as cnt FROM elections WHERE guild_id = ? AND status = 'active'").get(guildId).cnt,
-    openCases: db.prepare("SELECT COUNT(*) as cnt FROM cases WHERE guild_id = ? AND status != 'closed'").get(guildId).cnt,
-    pendingBills: db.prepare("SELECT COUNT(*) as cnt FROM bills WHERE guild_id = ? AND status = 'proposed'").get(guildId).cnt,
-    totalOffices: db.prepare('SELECT COUNT(*) as cnt FROM offices WHERE guild_id = ?').get(guildId).cnt,
-    filledOffices: db.prepare('SELECT COUNT(*) as cnt FROM offices WHERE guild_id = ? AND holder_id IS NOT NULL').get(guildId).cnt,
-  };
-  res.json({ config, treasury, stats });
+  try {
+    const { guildId } = req.params;
+    if (!guildId || typeof guildId !== 'string') {
+      return res.status(400).json({ error: 'Invalid guild ID' });
+    }
+    const config = db.prepare('SELECT * FROM server_config WHERE guild_id = ?').get(guildId);
+    const treasury = db.prepare('SELECT * FROM treasury WHERE guild_id = ?').get(guildId);
+    const stats = {
+      citizens: db.prepare('SELECT COUNT(*) as cnt FROM citizens WHERE guild_id = ?').get(guildId).cnt,
+      parties: db.prepare('SELECT COUNT(*) as cnt FROM parties WHERE guild_id = ? AND is_active = 1').get(guildId).cnt,
+      laws: db.prepare("SELECT COUNT(*) as cnt FROM laws WHERE guild_id = ? AND is_active = 1").get(guildId).cnt,
+      activeElections: db.prepare("SELECT COUNT(*) as cnt FROM elections WHERE guild_id = ? AND status = 'active'").get(guildId).cnt,
+      openCases: db.prepare("SELECT COUNT(*) as cnt FROM cases WHERE guild_id = ? AND status != 'closed'").get(guildId).cnt,
+      pendingBills: db.prepare("SELECT COUNT(*) as cnt FROM bills WHERE guild_id = ? AND status = 'proposed'").get(guildId).cnt,
+      totalOffices: db.prepare('SELECT COUNT(*) as cnt FROM offices WHERE guild_id = ?').get(guildId).cnt,
+      filledOffices: db.prepare('SELECT COUNT(*) as cnt FROM offices WHERE guild_id = ? AND holder_id IS NOT NULL').get(guildId).cnt,
+    };
+    res.json({ config, treasury, stats });
+  } catch (error) {
+    console.error('API error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // Elections

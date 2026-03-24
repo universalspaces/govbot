@@ -77,7 +77,7 @@ export default {
     }
 
     if (sub === 'rep') {
-      if (!interaction.member.permissions.has('ManageGuild')) {
+      if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
         return interaction.reply({ embeds: [errorEmbed('You need Manage Server permissions.')], flags: 64 });
       }
       const target = interaction.options.getUser('user');
