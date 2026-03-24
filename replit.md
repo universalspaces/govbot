@@ -49,6 +49,20 @@ The following env vars are set in Replit:
 - Web dashboard with Discord OAuth2 login and real-time updates
 - Cron-based election auto-close scheduler
 
+## Code Quality
+
+The codebase follows Discord.js v14 best practices with:
+- Parameterized SQL queries (protection against SQL injection)
+- Comprehensive error handling in async operations
+- Helper functions for common patterns (embeds, logging, permissions)
+- Proper use of Discord.js builders for commands and embeds
+
+Recent improvements:
+- Fixed embed object formatting in stats command
+- Standardized permission checks to use `PermissionFlagsBits`
+- Added error handling and validation to dashboard API endpoints
+- Consistent import organization across all command files
+
 ## Deployment
 
 Configured as a **VM** deployment (always-running) because it uses a local SQLite file and WebSockets. Run command: `node dashboard/server.js`.
