@@ -9,6 +9,11 @@ import { checkElections } from './utils/electionScheduler.js';
 
 dotenv.config();
 
+// Start the dashboard server alongside the bot
+import('../dashboard/server.js').catch(e => console.error('Dashboard failed to start:', e));
+
+dotenv.config();
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const client = new Client({
@@ -54,6 +59,32 @@ client.on('interactionCreate', async interaction => {
   if (!existing) {
     db.prepare('INSERT OR IGNORE INTO server_config (guild_id) VALUES (?)').run(interaction.guildId);
     db.prepare('INSERT OR IGNORE INTO treasury (guild_id) VALUES (?)').run(interaction.guildId);
+  }
+
+  // Central citizenship gate — if require_citizenship is on, block civic commands for non-citizens
+  // Exemptions: citizen register itself, info/list/profile commands, admin commands, setup, government, help
+  const config = db.prepare('SELECT * FROM server_config WHERE guild_id = ?').get(interaction.guildId);
+  if (config?.require_citizenship) {
+    const EXEMPT_COMMANDS = ['citizen', 'help', 'setup', 'government', 'admin', 'stats', 'treasury'];
+    const EXEMPT_SUBCOMMANDS = ['register', 'profile', 'list', 'info', 'balance', 'wallet', 'transactions', 'richlist', 'judges'];
+    const sub = interaction.options?.getSubcommand?.(false);
+    const isExemptCommand = EXEMPT_COMMANDS.includes(interaction.commandName);
+    const isExemptSub = sub && EXEMPT_SUBCOMMANDS.includes(sub);
+    const isViewOnly = ['list', 'info', 'view', 'docket'].includes(sub);
+
+    if (!isExemptCommand && !isExemptSub && !isViewOnly) {
+      const citizen = db.prepare('SELECT * FROM citizens WHERE guild_id = ? AND user_id = ?').get(interaction.guildId, interaction.user.id);
+      if (!citizen) {
+        const { EmbedBuilder } = await import('discord.js');
+        return interaction.reply({
+          embeds: [new EmbedBuilder()
+            .setColor(0xed4245)
+            .setTitle('❌ Citizenship Required')
+            .setDescription(`**${config.government_name || 'This government'}** requires you to register as a citizen before participating.\n\nUse \`/citizen register\` to get started.`)],
+          flags: 64
+        });
+      }
+    }
   }
 
   try {
