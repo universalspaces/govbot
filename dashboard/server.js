@@ -17,8 +17,10 @@ const app = express();
 const httpServer = createServer(app);
 const io = new SocketIO(httpServer);
 
-// Trust Replit's reverse proxy so HTTPS cookies and forwarded headers work correctly
+// Trust reverse proxy so HTTPS cookies and forwarded headers work correctly
 app.set('trust proxy', 1);
+
+const isHttps = process.env.CALLBACK_URL?.startsWith('https');
 
 // Middleware
 app.use(cors({ origin: true, credentials: true }));
@@ -29,8 +31,8 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: true,
-    sameSite: 'lax',
+    secure: isHttps,
+    sameSite: isHttps ? 'lax' : 'strict',
     maxAge: 86400000
   }
 }));
