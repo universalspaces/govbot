@@ -8,7 +8,8 @@
     "start": "node bot/index.js",
     "dashboard": "node dashboard/server.js",
     "deploy": "node bot/deploy-commands.js",
-    "dev": "node --watch bot/index.js"
+    "dev": "node --watch bot/index.js",
+    "postinstall": "npm rebuild better-sqlite3"
   },
   "dependencies": {
     "discord.js": "^14.14.1",
