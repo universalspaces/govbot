@@ -36,6 +36,7 @@ for (const file of commandFiles) {
 client.once('clientReady', () => {
   console.log(`✅ GovBot is online as ${client.user.tag}`);
   console.log(`📊 Serving ${client.guilds.cache.size} server(s)`);
+  console.log(`successfully finished startup`);
 
   // Schedule election checks every minute
   cron.schedule('* * * * *', () => checkElections(client));
