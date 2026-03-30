@@ -10,9 +10,9 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import db from '../bot/database.js';
 
-dotenv.config();
-
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// Load .env from the project root regardless of working directory
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 const app = express();
 const httpServer = createServer(app);
 const io = new SocketIO(httpServer);
