@@ -7,14 +7,12 @@ import cron from 'node-cron';
 import db from './database.js';
 import { checkElections } from './utils/electionScheduler.js';
 
-dotenv.config();
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// Load .env from the project root regardless of working directory
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 // Start the dashboard server alongside the bot
 import('../dashboard/server.js').catch(e => console.error('Dashboard failed to start:', e));
-
-dotenv.config();
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const client = new Client({
   intents: [
