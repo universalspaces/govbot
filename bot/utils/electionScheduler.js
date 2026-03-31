@@ -215,6 +215,20 @@ export async function closeElection(client, election) {
       }
       db.prepare('UPDATE offices SET holder_id = ?, assumed_at = ? WHERE guild_id = ? AND name = ?')
         .run(winnerUserId, Math.floor(Date.now() / 1000), election.guild_id, officeName);
+
+      // Announce new officeholder in announcement channel if different from election channel
+      if (config?.announcement_channel && config.announcement_channel !== config.election_channel) {
+        try {
+          const announceChan = await guild.channels.fetch(config.announcement_channel);
+          await announceChan.send({
+            embeds: [new EmbedBuilder()
+              .setColor(0x57f287)
+              .setTitle(`💼 New Officeholder: ${officeName}`)
+              .setDescription(`<@${winnerUserId}> has been elected as **${officeName}** and has assumed office.`)
+              .setTimestamp()]
+          });
+        } catch (e) {}
+      }
     }
   } catch (e) { console.error('Failed to close election:', e); }
 }
