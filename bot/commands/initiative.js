@@ -48,11 +48,14 @@ export default {
       const citizen = db.prepare('SELECT * FROM citizens WHERE guild_id = ? AND user_id = ?').get(gid, uid);
       if (!citizen) return interaction.reply({ embeds: [errorEmbed('You must be a registered citizen to propose an initiative. Use `/citizen register` first.')], flags: 64 });
 
+      const config = db.prepare('SELECT * FROM server_config WHERE guild_id = ?').get(gid);
+      const serverDefault = config?.default_initiative_signatures || DEFAULT_SIGNATURES;
+
       const title = interaction.options.getString('title');
       const description = interaction.options.getString('description');
       const action = interaction.options.getString('action');
       const type = interaction.options.getString('type');
-      const signaturesRequired = interaction.options.getInteger('signatures') || DEFAULT_SIGNATURES;
+      const signaturesRequired = interaction.options.getInteger('signatures') || serverDefault;
 
       const now = Math.floor(Date.now() / 1000);
       const expiresAt = now + EXPIRY_DAYS * 86400;
