@@ -9,24 +9,32 @@ dotenv.config();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const commands = [];
 
+// 1. Load your commands
 const commandFiles = readdirSync(path.join(__dirname, 'commands')).filter(f => f.endsWith('.js'));
 
 for (const file of commandFiles) {
   const { default: command } = await import(`./commands/${file}`);
-  if ('data' in command) commands.push(command.data.toJSON());
+  if (command && 'data' in command) {
+    commands.push(command.data.toJSON());
+  }
 }
 
 const rest = new REST().setToken(process.env.DISCORD_TOKEN);
 
-try {
-  console.log(`📤 Deploying ${commands.length} slash commands...`);
-  const route = process.env.GUILD_ID
-    ? Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID)
-    : Routes.applicationCommands(process.env.CLIENT_ID);
+(async () => {
+  try {
+    console.log(`🚀 Started refreshing ${commands.length} global application (/) commands.`);
 
-  await rest.put(route, { body: commands });
-  console.log('✅ Successfully deployed all slash commands!');
-  commands.forEach(c => console.log(`  /${c.name}`));
-} catch (error) {
-  console.error('❌ Deployment failed:', error);
-}
+    // 2. Deploy GLOBALLY
+    // This makes the commands available in EVERY server the bot is in.
+    await rest.put(
+      Routes.applicationCommands(process.env.CLIENT_ID),
+      { body: commands },
+    );
+
+    console.log('✅ Successfully reloaded all global commands!');
+    console.log('💡 Note: Global commands can take a few minutes to propagate to all servers.');
+  } catch (error) {
+    console.error('❌ Error deploying commands:', error);
+  }
+})();
