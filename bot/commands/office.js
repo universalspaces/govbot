@@ -118,7 +118,6 @@ export default {
 
       const prevHolder = office.holder_id;
       const now2 = Math.floor(Date.now() / 1000);
-      // Archive to history
       if (office.assumed_at) {
         db.prepare('INSERT INTO office_history (guild_id, office_name, user_id, assumed_at, vacated_at, reason) VALUES (?, ?, ?, ?, ?, ?)')
           .run(gid, office.name, prevHolder, office.assumed_at, now2, 'removed');
@@ -129,6 +128,23 @@ export default {
         try {
           const member = await interaction.guild.members.fetch(prevHolder);
           await member.roles.remove(office.role_id);
+        } catch (e) {}
+      }
+
+      // Announce vacancy in announcement channel
+      const config = db.prepare('SELECT * FROM server_config WHERE guild_id = ?').get(gid);
+      if (config?.announcement_channel) {
+        try {
+          const announceChan = await interaction.guild.channels.fetch(config.announcement_channel).catch(() => null);
+          if (announceChan) {
+            await announceChan.send({
+              embeds: [new EmbedBuilder()
+                .setColor(0xfee75c)
+                .setTitle(`💼 Office Vacant: ${office.name}`)
+                .setDescription(`<@${prevHolder}> has been removed from **${office.name}**. This position is now vacant.`)
+                .setTimestamp()]
+            });
+          }
         } catch (e) {}
       }
 
