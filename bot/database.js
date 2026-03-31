@@ -23,6 +23,9 @@ db.exec(`
     party_role_color INTEGER DEFAULT 0,
     election_duration_hours INTEGER DEFAULT 48,
     default_initiative_signatures INTEGER DEFAULT 10,
+    parliament_role TEXT,
+    citizenship_oath TEXT,
+    require_citizenship INTEGER DEFAULT 0,
     created_at INTEGER DEFAULT (unixepoch())
   );
 
@@ -422,6 +425,33 @@ db.exec(`
     signed_at INTEGER DEFAULT (unixepoch()),
     PRIMARY KEY (recall_id, signer_id),
     FOREIGN KEY (recall_id) REFERENCES recalls(id)
+  );
+
+  -- Appointed judges
+  CREATE TABLE IF NOT EXISTS judges (
+    guild_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    appointed_by TEXT NOT NULL,
+    appointed_at INTEGER DEFAULT (unixepoch()),
+    is_active INTEGER DEFAULT 1,
+    PRIMARY KEY (guild_id, user_id)
+  );
+
+  -- Court appeals (linked to original case)
+  CREATE TABLE IF NOT EXISTS case_appeals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT NOT NULL,
+    original_case_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    grounds TEXT NOT NULL,
+    appellant_id TEXT NOT NULL,
+    judge_id TEXT,
+    status TEXT DEFAULT 'filed',
+    verdict TEXT,
+    ruling TEXT,
+    filed_at INTEGER DEFAULT (unixepoch()),
+    ruled_at INTEGER,
+    FOREIGN KEY (original_case_id) REFERENCES cases(id)
   );
 `);
 
