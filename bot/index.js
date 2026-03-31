@@ -59,19 +59,18 @@ client.on('interactionCreate', async interaction => {
     db.prepare('INSERT OR IGNORE INTO treasury (guild_id) VALUES (?)').run(interaction.guildId);
   }
 
-  // Central citizenship gate — if require_citizenship is on, block civic commands for non-citizens
-  // Exemptions: citizen register itself, info/list/profile commands, admin commands, setup, government, help
+  // Central citizenship gate
   const config = db.prepare('SELECT * FROM server_config WHERE guild_id = ?').get(interaction.guildId);
   if (config?.require_citizenship) {
     const EXEMPT_COMMANDS = ['citizen', 'help', 'setup', 'government', 'admin', 'stats', 'treasury'];
-    const EXEMPT_SUBCOMMANDS = ['register', 'profile', 'list', 'info', 'balance', 'wallet', 'transactions', 'richlist', 'judges'];
+    const EXEMPT_SUBS = ['register', 'profile', 'list', 'info', 'balance', 'wallet', 'transactions', 'richlist', 'judges'];
     const sub = interaction.options?.getSubcommand?.(false);
-    const isExemptCommand = EXEMPT_COMMANDS.includes(interaction.commandName);
-    const isExemptSub = sub && EXEMPT_SUBCOMMANDS.includes(sub);
-    const isViewOnly = ['list', 'info', 'view', 'docket'].includes(sub);
+    const isExempt = EXEMPT_COMMANDS.includes(interaction.commandName)
+      || (sub && EXEMPT_SUBS.includes(sub))
+      || ['list', 'info', 'view', 'docket'].includes(sub);
 
-    if (!isExemptCommand && !isExemptSub && !isViewOnly) {
-      const citizen = db.prepare('SELECT * FROM citizens WHERE guild_id = ? AND user_id = ?').get(interaction.guildId, interaction.user.id);
+    if (!isExempt) {
+      const citizen = db.prepare('SELECT 1 FROM citizens WHERE guild_id = ? AND user_id = ?').get(interaction.guildId, interaction.user.id);
       if (!citizen) {
         const { EmbedBuilder } = await import('discord.js');
         return interaction.reply({
