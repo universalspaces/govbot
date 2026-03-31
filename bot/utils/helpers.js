@@ -29,6 +29,25 @@ export function isAdmin(member) {
   return member.permissions.has('Administrator') || member.permissions.has('ManageGuild');
 }
 
+export function getCitizen(guildId, userId) {
+  return db.prepare('SELECT * FROM citizens WHERE guild_id = ? AND user_id = ?').get(guildId, userId) || null;
+}
+
+export async function requireCitizen(interaction) {
+  const citizen = getCitizen(interaction.guildId, interaction.user.id);
+  if (!citizen) {
+    await interaction.reply({
+      embeds: [new EmbedBuilder()
+        .setColor(0xed4245)
+        .setTitle('❌ Not a Registered Citizen')
+        .setDescription('You must register as a citizen before using this command.\n\nUse `/citizen register` to get started.')],
+      flags: 64
+    });
+    return false;
+  }
+  return true;
+}
+
 export function formatTimestamp(unixTime) {
   return `<t:${unixTime}:F>`;
 }
