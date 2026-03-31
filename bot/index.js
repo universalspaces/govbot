@@ -58,6 +58,8 @@ client.once('ready', async () => {
 
   console.log(`📊 Serving ${client.guilds.cache.size} server(s)`);
   console.log(`🚀 Startup process complete.`);
+  // Log for BiscetHosting
+  console.log(`successfully finished startup`);
 
   cron.schedule('* * * * *', () => checkElections(client));
 });
