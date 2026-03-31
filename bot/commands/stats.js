@@ -1,6 +1,7 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import db from '../database.js';
-import { getOfficeName } from './vote.js';
+import { getOfficeName, getElectionType } from './vote.js';
+import { errorEmbed } from '../utils/helpers.js';
 
 export default {
   data: new SlashCommandBuilder()
