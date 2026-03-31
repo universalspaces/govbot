@@ -1,6 +1,6 @@
 import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
 import db from '../database.js';
-import { errorEmbed, successEmbed, logActivity } from '../utils/helpers.js';
+import { errorEmbed, successEmbed, logActivity, requireCitizen } from '../utils/helpers.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -171,6 +171,16 @@ export default {
 
       if (!bill) return interaction.reply({ embeds: [errorEmbed(`Bill #${billId} not found.`)], flags: 64 });
       if (bill.status !== 'proposed') return interaction.reply({ embeds: [errorEmbed('This bill is no longer open for voting.')], flags: 64 });
+
+      // Parliament role check — if set, only members with that role can vote on bills
+      if (config?.parliament_role) {
+        const member = await interaction.guild.members.fetch(uid).catch(() => null);
+        if (!member?.roles.cache.has(config.parliament_role)) {
+          return interaction.reply({ embeds: [errorEmbed(`Only members of <@&${config.parliament_role}> can vote on bills in this government.`)], flags: 64 });
+        }
+      } else if (config?.require_citizenship) {
+        if (!await requireCitizen(interaction)) return;
+      }
 
       const existing = db.prepare('SELECT * FROM bill_votes WHERE bill_id = ? AND voter_id = ?').get(billId, uid);
       const emoji = { yes: '✅', no: '❌', abstain: '⬛' };
