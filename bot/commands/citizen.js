@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
 import db from '../database.js';
 import { errorEmbed, successEmbed, logActivity } from '../utils/helpers.js';
 
@@ -14,6 +14,9 @@ export default {
       .setDescription('View a citizen profile')
       .addUserOption(o => o.setName('user').setDescription('User to view (defaults to yourself)')))
     .addSubcommand(s => s
+      .setName('list')
+      .setDescription('List all registered citizens'))
+    .addSubcommand(s => s
       .setName('rep')
       .setDescription('Give or take reputation from a citizen (Admin only)')
       .addUserOption(o => o.setName('user').setDescription('Target user').setRequired(true))
@@ -28,33 +31,39 @@ export default {
       const existing = db.prepare('SELECT * FROM citizens WHERE guild_id = ? AND user_id = ?').get(gid, uid);
       if (existing) return interaction.reply({ embeds: [errorEmbed('You are already a registered citizen.')], flags: 64 });
 
+      const config = db.prepare('SELECT * FROM server_config WHERE guild_id = ?').get(gid);
       const count = db.prepare('SELECT COUNT(*) as cnt FROM citizens WHERE guild_id = ?').get(gid).cnt;
       db.prepare('INSERT INTO citizens (guild_id, user_id, citizen_number) VALUES (?, ?, ?)').run(gid, uid, count + 1);
       logActivity(gid, 'CITIZEN_REGISTERED', uid, null, `Citizen #${count + 1}`);
 
-      const config = db.prepare('SELECT * FROM server_config WHERE guild_id = ?').get(gid);
-      const embed = new EmbedBuilder()
+      const welcomeEmbed = new EmbedBuilder()
         .setColor(0x57f287)
         .setTitle('🎉 Welcome, Citizen!')
         .setDescription(`You are now **Citizen #${count + 1}** of **${config?.government_name || 'the Republic'}**.`)
-        .addFields(
-          { name: '🗳️ Your Rights', value: '• Vote in elections\n• Join a political party\n• Propose citizens\' initiatives\n• File court cases' }
-        );
-      return interaction.reply({ embeds: [embed] });
+        .addFields({ name: '🗳️ Your Rights', value: '• Vote in elections\n• Join a political party\n• Propose citizens\' initiatives\n• File court cases\n• Sign recall petitions' });
+
+      if (config?.citizenship_oath) {
+        const oathEmbed = new EmbedBuilder()
+          .setColor(0x5865f2)
+          .setTitle('📜 Citizenship Oath')
+          .setDescription(config.citizenship_oath)
+          .setFooter({ text: 'By registering, you swear to uphold the above oath.' });
+        return interaction.reply({ embeds: [oathEmbed, welcomeEmbed] });
+      }
+
+      return interaction.reply({ embeds: [welcomeEmbed] });
     }
 
     if (sub === 'profile') {
       const target = interaction.options.getUser('user') || interaction.user;
       const citizen = db.prepare('SELECT * FROM citizens WHERE guild_id = ? AND user_id = ?').get(gid, target.id);
-
       if (!citizen) return interaction.reply({ embeds: [errorEmbed(`${target.username} is not a registered citizen.`)], flags: 64 });
 
       const party = db.prepare('SELECT p.* FROM party_members pm JOIN parties p ON pm.party_id = p.id WHERE pm.guild_id = ? AND pm.user_id = ?').get(gid, target.id);
       const offices = db.prepare('SELECT * FROM offices WHERE guild_id = ? AND holder_id = ?').all(gid, target.id);
       const electionsWon = db.prepare('SELECT COUNT(*) as cnt FROM elections WHERE guild_id = ? AND winner_id = ?').get(gid, target.id).cnt;
       const billsSponsored = db.prepare("SELECT COUNT(*) as cnt FROM bills WHERE guild_id = ? AND sponsor_id = ? AND status = 'passed'").get(gid, target.id).cnt;
-
-      const member = await interaction.guild.members.fetch(target.id).catch(() => null);
+      const isJudge = db.prepare('SELECT 1 FROM judges WHERE guild_id = ? AND user_id = ? AND is_active = 1').get(gid, target.id);
 
       const embed = new EmbedBuilder()
         .setColor(0x5865f2)
@@ -62,18 +71,40 @@ export default {
         .setThumbnail(target.displayAvatarURL())
         .addFields(
           { name: '🆔 Citizen Number', value: `#${citizen.citizen_number}`, inline: true },
-          { name: '⭐ Reputation', value: `${citizen.reputation}`, inline: true },
+          { name: '⭐ Reputation', value: `${citizen.reputation >= 0 ? '+' : ''}${citizen.reputation}`, inline: true },
           { name: '📅 Registered', value: `<t:${citizen.registered_at}:D>`, inline: true },
           { name: '🏛️ Party', value: party ? `${party.emoji} ${party.name}` : 'Independent', inline: true },
           { name: '🏆 Elections Won', value: `${electionsWon}`, inline: true },
           { name: '📜 Bills Passed', value: `${billsSponsored}`, inline: true }
         );
 
-      if (offices.length > 0) {
-        embed.addFields({ name: '💼 Current Offices', value: offices.map(o => `• ${o.name}`).join('\n') });
-      }
+      if (isJudge) embed.addFields({ name: '⚖️ Role', value: '👨‍⚖️ Appointed Judge', inline: true });
+      if (offices.length > 0) embed.addFields({ name: '💼 Current Offices', value: offices.map(o => `• ${o.name}`).join('\n') });
 
       return interaction.reply({ embeds: [embed] });
+    }
+
+    if (sub === 'list') {
+      const citizens = db.prepare(`
+        SELECT c.*, p.name as party_name, p.emoji as party_emoji
+        FROM citizens c
+        LEFT JOIN party_members pm ON c.guild_id = pm.guild_id AND c.user_id = pm.user_id
+        LEFT JOIN parties p ON pm.party_id = p.id
+        WHERE c.guild_id = ?
+        ORDER BY c.citizen_number ASC
+      `).all(gid);
+
+      if (citizens.length === 0) return interaction.reply({ embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle('🪪 Citizens').setDescription('No citizens registered yet.')] });
+
+      const list = citizens.map(c =>
+        `**#${c.citizen_number}** <@${c.user_id}>${c.party_name ? ` — ${c.party_emoji} ${c.party_name}` : ' — Independent'}`
+      ).join('\n');
+
+      return interaction.reply({ embeds: [new EmbedBuilder()
+        .setColor(0x5865f2)
+        .setTitle('🪪 Registered Citizens')
+        .setDescription(list.substring(0, 4000))
+        .setFooter({ text: `${citizens.length} citizen${citizens.length !== 1 ? 's' : ''} registered` })] });
     }
 
     if (sub === 'rep') {
