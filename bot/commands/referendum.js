@@ -96,15 +96,30 @@ export default {
       }
 
       const existing = db.prepare('SELECT * FROM referendum_votes WHERE referendum_id = ? AND voter_id = ?').get(id, uid);
-      if (existing) return interaction.reply({ embeds: [errorEmbed('You have already voted on this referendum.')], flags: 64 });
+      const voteEmoji = { yes: '✅', no: '❌', abstain: '⬛' };
+
+      if (existing) {
+        if (existing.vote === vote) return interaction.reply({ embeds: [errorEmbed(`You already voted **${voteEmoji[vote]} ${vote.toUpperCase()}** on this referendum.`)], flags: 64 });
+        // Remove old vote from tally
+        if (existing.vote === 'yes') db.prepare('UPDATE referendums SET votes_yes = votes_yes - 1 WHERE id = ?').run(id);
+        else if (existing.vote === 'no') db.prepare('UPDATE referendums SET votes_no = votes_no - 1 WHERE id = ?').run(id);
+        else db.prepare('UPDATE referendums SET votes_abstain = votes_abstain - 1 WHERE id = ?').run(id);
+        db.prepare('UPDATE referendum_votes SET vote = ? WHERE referendum_id = ? AND voter_id = ?').run(vote, id, uid);
+        // Add new vote
+        if (vote === 'yes') db.prepare('UPDATE referendums SET votes_yes = votes_yes + 1 WHERE id = ?').run(id);
+        else if (vote === 'no') db.prepare('UPDATE referendums SET votes_no = votes_no + 1 WHERE id = ?').run(id);
+        else db.prepare('UPDATE referendums SET votes_abstain = votes_abstain + 1 WHERE id = ?').run(id);
+        return interaction.reply({
+          embeds: [successEmbed('Vote Changed', `Changed from **${voteEmoji[existing.vote]} ${existing.vote.toUpperCase()}** to **${voteEmoji[vote]} ${vote.toUpperCase()}** on Referendum #${id}: **${ref.title}**`, gid)],
+          flags: 64
+        });
+      }
 
       db.prepare('INSERT INTO referendum_votes (referendum_id, voter_id, vote) VALUES (?, ?, ?)').run(id, uid, vote);
 
       if (vote === 'yes') db.prepare('UPDATE referendums SET votes_yes = votes_yes + 1 WHERE id = ?').run(id);
       else if (vote === 'no') db.prepare('UPDATE referendums SET votes_no = votes_no + 1 WHERE id = ?').run(id);
       else db.prepare('UPDATE referendums SET votes_abstain = votes_abstain + 1 WHERE id = ?').run(id);
-
-      const voteEmoji = { yes: '✅', no: '❌', abstain: '⬛' };
       return interaction.reply({
         embeds: [successEmbed('Vote Recorded', `You voted **${voteEmoji[vote]} ${vote.toUpperCase()}** on Referendum #${id}: **${ref.title}**`, gid)],
         flags: 64
