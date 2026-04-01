@@ -71,15 +71,15 @@ client.on('interactionCreate', async interaction => {
   const command = client.commands.get(interaction.commandName);
   if (!command) return;
 
-  // Server config logic
-  const existing = db.prepare('SELECT * FROM server_config WHERE guild_id = ?').get(interaction.guildId);
-  if (!existing) {
+  // Ensure server config and treasury rows exist for this guild
+  let config = db.prepare('SELECT * FROM server_config WHERE guild_id = ?').get(interaction.guildId);
+  if (!config) {
     db.prepare('INSERT OR IGNORE INTO server_config (guild_id) VALUES (?)').run(interaction.guildId);
     db.prepare('INSERT OR IGNORE INTO treasury (guild_id) VALUES (?)').run(interaction.guildId);
+    config = db.prepare('SELECT * FROM server_config WHERE guild_id = ?').get(interaction.guildId);
   }
 
-  // Citizenship gate
-  const config = db.prepare('SELECT * FROM server_config WHERE guild_id = ?').get(interaction.guildId);
+  // Citizenship gate — one query, reuses config already loaded above
   if (config?.require_citizenship) {
     const EXEMPT_COMMANDS = ['citizen', 'help', 'setup', 'government', 'admin', 'stats', 'treasury'];
     const EXEMPT_SUBS = ['register', 'profile', 'list', 'info', 'balance', 'wallet', 'transactions', 'richlist', 'judges'];
