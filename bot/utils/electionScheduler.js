@@ -24,8 +24,7 @@ export async function checkElections(client) {
     await closeReferendum(client, ref);
   }
 
-  // FIX: Removed redundant dynamic import — EmbedBuilder already imported at top
-  // Fire DM reminders
+  // Fire DM reminders for elections closing soon
   const dueReminders = db.prepare('SELECT * FROM election_reminders WHERE sent = 0 AND remind_at <= ?').all(now);
   for (const reminder of dueReminders) {
     try {
