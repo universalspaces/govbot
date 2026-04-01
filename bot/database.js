@@ -111,6 +111,7 @@ db.exec(`
     holder_id TEXT,
     term_length_days INTEGER DEFAULT 30,
     is_elected INTEGER DEFAULT 1,
+    is_permanent INTEGER DEFAULT 0,
     assumed_at INTEGER,
     UNIQUE(guild_id, name)
   );
@@ -490,5 +491,11 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_reminders_unsent         ON election_reminders(sent, remind_at);
   CREATE INDEX IF NOT EXISTS idx_laws_guild_active        ON laws(guild_id, is_active);
 `);
+
+// ── Migrations (safe to run on existing databases) ───────────────────────────
+const officeColumns = db.pragma('table_info(offices)').map(c => c.name);
+if (!officeColumns.includes('is_permanent')) {
+  db.exec('ALTER TABLE offices ADD COLUMN is_permanent INTEGER DEFAULT 0;');
+}
 
 export default db;
