@@ -83,24 +83,27 @@ export default {
     if (sub === 'member') {
       const target = interaction.options.getUser('user') || interaction.user;
       const citizen = db.prepare('SELECT * FROM citizens WHERE guild_id = ? AND user_id = ?').get(gid, target.id);
-
-      const votesInElections = db.prepare('SELECT COUNT(*) as cnt FROM votes WHERE voter_id = ? AND election_id IN (SELECT id FROM elections WHERE guild_id = ?)').get(target.id, gid).cnt;
-      const rcvVotes = db.prepare('SELECT COUNT(*) as cnt FROM rcv_votes WHERE voter_id = ? AND election_id IN (SELECT id FROM elections WHERE guild_id = ?)').get(target.id, gid).cnt;
-      const totalVotesCast = votesInElections + rcvVotes;
-
-      const electionsRun = db.prepare('SELECT COUNT(*) as cnt FROM candidates WHERE user_id = ? AND election_id IN (SELECT id FROM elections WHERE guild_id = ?)').get(target.id, gid).cnt;
-      const electionsWon = db.prepare("SELECT COUNT(*) as cnt FROM elections WHERE guild_id = ? AND winner_id = ?").get(gid, target.id).cnt;
-      const billsProposed = db.prepare('SELECT COUNT(*) as cnt FROM bills WHERE guild_id = ? AND sponsor_id = ?').get(gid, target.id).cnt;
-      const billsPassed = db.prepare("SELECT COUNT(*) as cnt FROM bills WHERE guild_id = ? AND sponsor_id = ? AND status = 'passed'").get(gid, target.id).cnt;
-      const billsCoSponsored = db.prepare('SELECT COUNT(*) as cnt FROM bill_cosponsors WHERE user_id = ? AND bill_id IN (SELECT id FROM bills WHERE guild_id = ?)').get(target.id, gid).cnt;
-      const initiativesFiled = db.prepare('SELECT COUNT(*) as cnt FROM initiatives WHERE guild_id = ? AND creator_id = ?').get(gid, target.id).cnt;
-      const initiativesFulfilled = db.prepare("SELECT COUNT(*) as cnt FROM initiatives WHERE guild_id = ? AND creator_id = ? AND status = 'fulfilled'").get(gid, target.id).cnt;
-      const casesFiled = db.prepare('SELECT COUNT(*) as cnt FROM cases WHERE guild_id = ? AND plaintiff_id = ?').get(gid, target.id).cnt;
-      const referendumVotes = db.prepare('SELECT COUNT(*) as cnt FROM referendum_votes WHERE voter_id = ? AND referendum_id IN (SELECT id FROM referendums WHERE guild_id = ?)').get(target.id, gid).cnt;
-      const officesHeld = db.prepare('SELECT COUNT(*) as cnt FROM office_history WHERE guild_id = ? AND user_id = ?').get(gid, target.id).cnt;
-      const currentOffices = db.prepare('SELECT * FROM offices WHERE guild_id = ? AND holder_id = ?').all(gid, target.id);
-
       const party = db.prepare('SELECT p.* FROM party_members pm JOIN parties p ON pm.party_id = p.id WHERE pm.guild_id = ? AND pm.user_id = ?').get(gid, target.id);
+      const currentOffices = db.prepare('SELECT name FROM offices WHERE guild_id = ? AND holder_id = ?').all(gid, target.id);
+
+      // Single aggregated query for all activity counts
+      const counts = db.prepare(`
+        SELECT
+          (SELECT COUNT(*) FROM votes            WHERE voter_id = @u AND election_id IN (SELECT id FROM elections WHERE guild_id = @g))    AS votes_fptp,
+          (SELECT COUNT(*) FROM rcv_votes        WHERE voter_id = @u AND election_id IN (SELECT id FROM elections WHERE guild_id = @g))    AS votes_rcv,
+          (SELECT COUNT(*) FROM candidates       WHERE user_id  = @u AND election_id IN (SELECT id FROM elections WHERE guild_id = @g))    AS elections_run,
+          (SELECT COUNT(*) FROM elections        WHERE guild_id = @g AND winner_id = @u)                                                   AS elections_won,
+          (SELECT COUNT(*) FROM bills            WHERE guild_id = @g AND sponsor_id = @u)                                                  AS bills_proposed,
+          (SELECT COUNT(*) FROM bills            WHERE guild_id = @g AND sponsor_id = @u AND status = 'passed')                            AS bills_passed,
+          (SELECT COUNT(*) FROM bill_cosponsors  WHERE user_id  = @u AND bill_id IN (SELECT id FROM bills WHERE guild_id = @g))            AS bills_cosponsored,
+          (SELECT COUNT(*) FROM initiatives      WHERE guild_id = @g AND creator_id = @u)                                                  AS initiatives_filed,
+          (SELECT COUNT(*) FROM initiatives      WHERE guild_id = @g AND creator_id = @u AND status = 'fulfilled')                         AS initiatives_fulfilled,
+          (SELECT COUNT(*) FROM cases            WHERE guild_id = @g AND plaintiff_id = @u)                                                AS cases_filed,
+          (SELECT COUNT(*) FROM referendum_votes WHERE voter_id = @u AND referendum_id IN (SELECT id FROM referendums WHERE guild_id = @g)) AS referendum_votes,
+          (SELECT COUNT(*) FROM office_history   WHERE guild_id = @g AND user_id = @u)                                                     AS offices_held
+      `).get({ g: gid, u: target.id });
+
+      const totalVotesCast = counts.votes_fptp + counts.votes_rcv;
 
       const embed = new EmbedBuilder()
         .setColor(0x5865f2)
@@ -110,27 +113,23 @@ export default {
           { name: '🪪 Citizen', value: citizen ? `#${citizen.citizen_number} · Rep: ${citizen.reputation >= 0 ? '+' : ''}${citizen.reputation}` : '*Not registered*', inline: true },
           { name: '🏛️ Party', value: party ? `${party.emoji} ${party.name}` : 'Independent', inline: true },
           { name: '💼 Current Offices', value: currentOffices.length > 0 ? currentOffices.map(o => o.name).join(', ') : 'None', inline: true },
-
           { name: '🗳️ Voting', value: [
             `Elections voted in: **${totalVotesCast}**`,
-            `Referendums voted in: **${referendumVotes}**`,
+            `Referendums voted in: **${counts.referendum_votes}**`,
           ].join('\n'), inline: true },
-
           { name: '🏆 Elected Office', value: [
-            `Times ran: **${electionsRun}**`,
-            `Elections won: **${electionsWon}**`,
-            `Offices held (history): **${officesHeld}**`,
+            `Times ran: **${counts.elections_run}**`,
+            `Elections won: **${counts.elections_won}**`,
+            `Offices held (history): **${counts.offices_held}**`,
           ].join('\n'), inline: true },
-
           { name: '📜 Legislation', value: [
-            `Bills proposed: **${billsProposed}**`,
-            `Bills passed: **${billsPassed}**`,
-            `Bills co-sponsored: **${billsCoSponsored}**`,
+            `Bills proposed: **${counts.bills_proposed}**`,
+            `Bills passed: **${counts.bills_passed}**`,
+            `Bills co-sponsored: **${counts.bills_cosponsored}**`,
           ].join('\n'), inline: true },
-
           { name: '📣 Civic Activity', value: [
-            `Initiatives filed: **${initiativesFiled}** (${initiativesFulfilled} fulfilled)`,
-            `Court cases filed: **${casesFiled}**`,
+            `Initiatives filed: **${counts.initiatives_filed}** (${counts.initiatives_fulfilled} fulfilled)`,
+            `Court cases filed: **${counts.cases_filed}**`,
           ].join('\n'), inline: false }
         );
 
@@ -138,11 +137,21 @@ export default {
     }
 
     if (sub === 'legislature') {
-      const totalBills = db.prepare('SELECT COUNT(*) as cnt FROM bills WHERE guild_id = ?').get(gid).cnt;
-      const passedBills = db.prepare("SELECT COUNT(*) as cnt FROM bills WHERE guild_id = ? AND status = 'passed'").get(gid).cnt;
-      const rejectedBills = db.prepare("SELECT COUNT(*) as cnt FROM bills WHERE guild_id = ? AND status = 'rejected'").get(gid).cnt;
-      const pendingBills = db.prepare("SELECT COUNT(*) as cnt FROM bills WHERE guild_id = ? AND status = 'proposed'").get(gid).cnt;
+      // Single aggregated query for all bill counts
+      const billCounts = db.prepare(`
+        SELECT
+          COUNT(*)                                                  AS total,
+          SUM(CASE WHEN status = 'passed'   THEN 1 ELSE 0 END)     AS passed,
+          SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END)     AS rejected,
+          SUM(CASE WHEN status = 'proposed' THEN 1 ELSE 0 END)     AS pending
+        FROM bills WHERE guild_id = ?
+      `).get(gid);
       const totalLaws = db.prepare("SELECT COUNT(*) as cnt FROM laws WHERE guild_id = ? AND is_active = 1").get(gid).cnt;
+
+      const totalBills  = billCounts.total    || 0;
+      const passedBills = billCounts.passed   || 0;
+      const rejectedBills = billCounts.rejected || 0;
+      const pendingBills  = billCounts.pending  || 0;
       const passRate = totalBills > 0 ? ((passedBills / totalBills) * 100).toFixed(1) : '0.0';
 
       // Top sponsors
@@ -241,3 +250,4 @@ export default {
     }
   }
 };
+
