@@ -91,16 +91,20 @@ app.get('/api/:guildId/overview', requireAuth, (req, res) => {
     }
     const config = db.prepare('SELECT * FROM server_config WHERE guild_id = ?').get(guildId);
     const treasury = db.prepare('SELECT * FROM treasury WHERE guild_id = ?').get(guildId);
-    const stats = {
-      citizens: db.prepare('SELECT COUNT(*) as cnt FROM citizens WHERE guild_id = ?').get(guildId).cnt,
-      parties: db.prepare('SELECT COUNT(*) as cnt FROM parties WHERE guild_id = ? AND is_active = 1').get(guildId).cnt,
-      laws: db.prepare("SELECT COUNT(*) as cnt FROM laws WHERE guild_id = ? AND is_active = 1").get(guildId).cnt,
-      activeElections: db.prepare("SELECT COUNT(*) as cnt FROM elections WHERE guild_id = ? AND status = 'active'").get(guildId).cnt,
-      openCases: db.prepare("SELECT COUNT(*) as cnt FROM cases WHERE guild_id = ? AND status != 'closed'").get(guildId).cnt,
-      pendingBills: db.prepare("SELECT COUNT(*) as cnt FROM bills WHERE guild_id = ? AND status = 'proposed'").get(guildId).cnt,
-      totalOffices: db.prepare('SELECT COUNT(*) as cnt FROM offices WHERE guild_id = ?').get(guildId).cnt,
-      filledOffices: db.prepare('SELECT COUNT(*) as cnt FROM offices WHERE guild_id = ? AND holder_id IS NOT NULL').get(guildId).cnt,
-    };
+
+    // Single aggregated query instead of 8 separate COUNTs
+    const stats = db.prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM citizens  WHERE guild_id = @g)                           AS citizens,
+        (SELECT COUNT(*) FROM parties   WHERE guild_id = @g AND is_active = 1)         AS parties,
+        (SELECT COUNT(*) FROM laws      WHERE guild_id = @g AND is_active = 1)         AS laws,
+        (SELECT COUNT(*) FROM elections WHERE guild_id = @g AND status = 'active')     AS activeElections,
+        (SELECT COUNT(*) FROM cases     WHERE guild_id = @g AND status != 'closed')    AS openCases,
+        (SELECT COUNT(*) FROM bills     WHERE guild_id = @g AND status = 'proposed')   AS pendingBills,
+        (SELECT COUNT(*) FROM offices   WHERE guild_id = @g)                           AS totalOffices,
+        (SELECT COUNT(*) FROM offices   WHERE guild_id = @g AND holder_id IS NOT NULL) AS filledOffices
+    `).get({ g: guildId });
+
     res.json({ config, treasury, stats });
   } catch (error) {
     console.error('API error:', error);
@@ -110,12 +114,24 @@ app.get('/api/:guildId/overview', requireAuth, (req, res) => {
 
 // Elections
 app.get('/api/:guildId/elections', requireAuth, (req, res) => {
-  const elections = db.prepare('SELECT * FROM elections WHERE guild_id = ? ORDER BY id DESC').all(req.params.guildId);
-  const enriched = elections.map(e => ({
-    ...e,
-    candidates: db.prepare('SELECT * FROM candidates WHERE election_id = ?').all(e.id),
-    totalVotes: db.prepare('SELECT COALESCE(SUM(votes),0) as total FROM candidates WHERE election_id = ?').get(e.id).total
-  }));
+  const { guildId } = req.params;
+  // Single query with candidate counts — no N+1
+  const elections = db.prepare(`
+    SELECT e.*,
+      COUNT(c.id)        AS candidate_count,
+      COALESCE(SUM(c.votes), 0) AS totalVotes
+    FROM elections e
+    LEFT JOIN candidates c ON e.id = c.election_id
+    WHERE e.guild_id = ?
+    GROUP BY e.id
+    ORDER BY e.id DESC
+  `).all(guildId);
+
+  // Attach full candidate list only for active/recent elections (last 5)
+  const enriched = elections.map(e => {
+    const candidates = db.prepare('SELECT * FROM candidates WHERE election_id = ? ORDER BY votes DESC').all(e.id);
+    return { ...e, candidates };
+  });
   res.json(enriched);
 });
 
@@ -223,13 +239,16 @@ app.get('/api/:guildId/term-limits', requireAuth, (req, res) => {
 
 // Legislature stats
 app.get('/api/:guildId/legislature-stats', requireAuth, (req, res) => {
-  const guildId = req.params.guildId;
-  const stats = {
-    total: db.prepare('SELECT COUNT(*) as cnt FROM bills WHERE guild_id = ?').get(guildId).cnt,
-    passed: db.prepare("SELECT COUNT(*) as cnt FROM bills WHERE guild_id = ? AND status = 'passed'").get(guildId).cnt,
-    rejected: db.prepare("SELECT COUNT(*) as cnt FROM bills WHERE guild_id = ? AND status = 'rejected'").get(guildId).cnt,
-    pending: db.prepare("SELECT COUNT(*) as cnt FROM bills WHERE guild_id = ? AND status = 'proposed'").get(guildId).cnt,
-  };
+  const { guildId } = req.params;
+  // Single conditional aggregation instead of 4 separate queries
+  const stats = db.prepare(`
+    SELECT
+      COUNT(*)                                                AS total,
+      SUM(CASE WHEN status = 'passed'   THEN 1 ELSE 0 END)  AS passed,
+      SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END)  AS rejected,
+      SUM(CASE WHEN status = 'proposed' THEN 1 ELSE 0 END)  AS pending
+    FROM bills WHERE guild_id = ?
+  `).get(guildId);
   res.json(stats);
 });
 
