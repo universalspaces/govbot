@@ -66,6 +66,14 @@ client.once('ready', async () => {
 
 // Event: Interaction (Rest of your code remains the same)
 client.on('interactionCreate', async interaction => {
+  if (interaction.isAutocomplete()) {
+    const command = client.commands.get(interaction.commandName);
+    if (command?.autocomplete) {
+      try { await command.autocomplete(interaction); } catch {}
+    }
+    return;
+  }
+
   if (!interaction.isChatInputCommand()) return;
 
   const command = client.commands.get(interaction.commandName);
