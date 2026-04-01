@@ -10,6 +10,9 @@ const db = new Database(path.join(dataDir, 'govbot.db'));
 
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
+db.pragma('synchronous = NORMAL');  // safe with WAL, faster than FULL
+db.pragma('cache_size = -32000');   // 32MB page cache
+db.pragma('temp_store = MEMORY');   // temp tables in memory
 
 db.exec(`
   -- Server configuration
@@ -453,6 +456,39 @@ db.exec(`
     ruled_at INTEGER,
     FOREIGN KEY (original_case_id) REFERENCES cases(id)
   );
+
+  -- ── Indexes ─────────────────────────────────────────────────────────────
+  -- Most queries filter by guild_id first, then status/user_id/etc.
+  CREATE INDEX IF NOT EXISTS idx_elections_guild_status   ON elections(guild_id, status);
+  CREATE INDEX IF NOT EXISTS idx_candidates_election      ON candidates(election_id);
+  CREATE INDEX IF NOT EXISTS idx_votes_election_voter     ON votes(election_id, voter_id);
+  CREATE INDEX IF NOT EXISTS idx_rcv_votes_election       ON rcv_votes(election_id, voter_id);
+  CREATE INDEX IF NOT EXISTS idx_bills_guild_status       ON bills(guild_id, status);
+  CREATE INDEX IF NOT EXISTS idx_bill_votes_bill          ON bill_votes(bill_id, voter_id);
+  CREATE INDEX IF NOT EXISTS idx_bill_cosponsors_bill     ON bill_cosponsors(bill_id);
+  CREATE INDEX IF NOT EXISTS idx_cases_guild_status       ON cases(guild_id, status);
+  CREATE INDEX IF NOT EXISTS idx_citizens_guild           ON citizens(guild_id);
+  CREATE INDEX IF NOT EXISTS idx_parties_guild_active     ON parties(guild_id, is_active);
+  CREATE INDEX IF NOT EXISTS idx_party_members_party      ON party_members(party_id);
+  CREATE INDEX IF NOT EXISTS idx_party_members_user       ON party_members(guild_id, user_id);
+  CREATE INDEX IF NOT EXISTS idx_offices_guild            ON offices(guild_id);
+  CREATE INDEX IF NOT EXISTS idx_office_history_guild     ON office_history(guild_id, user_id);
+  CREATE INDEX IF NOT EXISTS idx_referendums_guild_status ON referendums(guild_id, status);
+  CREATE INDEX IF NOT EXISTS idx_referendum_votes         ON referendum_votes(referendum_id, voter_id);
+  CREATE INDEX IF NOT EXISTS idx_initiatives_guild_status ON initiatives(guild_id, status);
+  CREATE INDEX IF NOT EXISTS idx_initiative_sigs          ON initiative_signatures(initiative_id);
+  CREATE INDEX IF NOT EXISTS idx_impeachments_guild       ON impeachments(guild_id, status);
+  CREATE INDEX IF NOT EXISTS idx_impeachment_votes        ON impeachment_votes(impeachment_id, voter_id);
+  CREATE INDEX IF NOT EXISTS idx_activity_log_guild       ON activity_log(guild_id);
+  CREATE INDEX IF NOT EXISTS idx_admin_log_guild          ON admin_log(guild_id);
+  CREATE INDEX IF NOT EXISTS idx_treasury_tx_guild        ON treasury_transactions(guild_id);
+  CREATE INDEX IF NOT EXISTS idx_wallets_guild            ON citizen_wallets(guild_id);
+  CREATE INDEX IF NOT EXISTS idx_polls_guild_status       ON polls(guild_id, status);
+  CREATE INDEX IF NOT EXISTS idx_poll_votes               ON poll_votes(poll_id, voter_id);
+  CREATE INDEX IF NOT EXISTS idx_recalls_guild_status     ON recalls(guild_id, status);
+  CREATE INDEX IF NOT EXISTS idx_recall_sigs              ON recall_signatures(recall_id);
+  CREATE INDEX IF NOT EXISTS idx_reminders_unsent         ON election_reminders(sent, remind_at);
+  CREATE INDEX IF NOT EXISTS idx_laws_guild_active        ON laws(guild_id, is_active);
 `);
 
 export default db;
