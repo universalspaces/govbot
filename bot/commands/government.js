@@ -1,6 +1,23 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import db from '../database.js';
 
+// Single query that fetches all government counts in one pass
+const stmtCounts = db.prepare(`
+  SELECT
+    (SELECT COUNT(*) FROM citizens        WHERE guild_id = @g)                          AS citizens,
+    (SELECT COUNT(*) FROM parties         WHERE guild_id = @g AND is_active = 1)        AS parties,
+    (SELECT COUNT(*) FROM laws            WHERE guild_id = @g AND is_active = 1)        AS laws,
+    (SELECT COUNT(*) FROM elections       WHERE guild_id = @g AND status = 'active')    AS active_elections,
+    (SELECT COUNT(*) FROM elections       WHERE guild_id = @g AND status = 'scheduled') AS scheduled_elections,
+    (SELECT COUNT(*) FROM cases           WHERE guild_id = @g AND status != 'closed')   AS open_cases,
+    (SELECT COUNT(*) FROM bills           WHERE guild_id = @g AND status = 'proposed')  AS pending_bills,
+    (SELECT COUNT(*) FROM offices         WHERE guild_id = @g)                          AS total_offices,
+    (SELECT COUNT(*) FROM offices         WHERE guild_id = @g AND holder_id IS NOT NULL) AS filled_offices,
+    (SELECT COUNT(*) FROM referendums     WHERE guild_id = @g AND status = 'active')    AS active_refs,
+    (SELECT COUNT(*) FROM initiatives     WHERE guild_id = @g AND status = 'collecting') AS active_inits,
+    (SELECT COUNT(*) FROM impeachments    WHERE guild_id = @g AND status = 'trial')     AS active_impeach
+`);
+
 export default {
   data: new SlashCommandBuilder()
     .setName('government')
@@ -12,33 +29,23 @@ export default {
     db.prepare('INSERT OR IGNORE INTO treasury (guild_id) VALUES (?)').run(gid);
     const treasury = db.prepare('SELECT * FROM treasury WHERE guild_id = ?').get(gid);
 
-    const citizens          = db.prepare('SELECT COUNT(*) as cnt FROM citizens WHERE guild_id = ?').get(gid).cnt;
-    const parties           = db.prepare('SELECT COUNT(*) as cnt FROM parties WHERE guild_id = ? AND is_active = 1').get(gid).cnt;
-    const laws              = db.prepare("SELECT COUNT(*) as cnt FROM laws WHERE guild_id = ? AND is_active = 1").get(gid).cnt;
-    const activeElections   = db.prepare("SELECT COUNT(*) as cnt FROM elections WHERE guild_id = ? AND status = 'active'").get(gid).cnt;
-    const scheduledElections= db.prepare("SELECT COUNT(*) as cnt FROM elections WHERE guild_id = ? AND status = 'scheduled'").get(gid).cnt;
-    const openCases         = db.prepare("SELECT COUNT(*) as cnt FROM cases WHERE guild_id = ? AND status != 'closed'").get(gid).cnt;
-    const pendingBills      = db.prepare("SELECT COUNT(*) as cnt FROM bills WHERE guild_id = ? AND status = 'proposed'").get(gid).cnt;
-    const totalOffices      = db.prepare('SELECT COUNT(*) as cnt FROM offices WHERE guild_id = ?').get(gid).cnt;
-    const filledOffices     = db.prepare('SELECT COUNT(*) as cnt FROM offices WHERE guild_id = ? AND holder_id IS NOT NULL').get(gid).cnt;
-    const activeRefs        = db.prepare("SELECT COUNT(*) as cnt FROM referendums WHERE guild_id = ? AND status = 'active'").get(gid).cnt;
-    const activeInits       = db.prepare("SELECT COUNT(*) as cnt FROM initiatives WHERE guild_id = ? AND status = 'collecting'").get(gid).cnt;
-    const activeImpeach     = db.prepare("SELECT COUNT(*) as cnt FROM impeachments WHERE guild_id = ? AND status = 'trial'").get(gid).cnt;
+    // Single aggregated query instead of 16 separate COUNT queries
+    const c = stmtCounts.get({ g: gid });
 
-    const offices = db.prepare('SELECT * FROM offices WHERE guild_id = ? AND holder_id IS NOT NULL ORDER BY name ASC LIMIT 6').all(gid);
+    const offices = db.prepare('SELECT name, holder_id FROM offices WHERE guild_id = ? AND holder_id IS NOT NULL ORDER BY name ASC LIMIT 6').all(gid);
     const officeText = offices.length > 0
       ? offices.map(o => `**${o.name}:** <@${o.holder_id}>`).join('\n')
       : '*No positions filled.*';
 
     const electionParts = [];
-    if (activeElections > 0) electionParts.push(`🟢 ${activeElections} active`);
-    if (scheduledElections > 0) electionParts.push(`📅 ${scheduledElections} scheduled`);
+    if (c.active_elections > 0)    electionParts.push(`🟢 ${c.active_elections} active`);
+    if (c.scheduled_elections > 0) electionParts.push(`📅 ${c.scheduled_elections} scheduled`);
     const electionValue = electionParts.length > 0 ? electionParts.join(' · ') : '—';
 
     const civicParts = [];
-    if (activeRefs > 0) civicParts.push(`📊 ${activeRefs} referendum${activeRefs !== 1 ? 's' : ''}`);
-    if (activeInits > 0) civicParts.push(`📣 ${activeInits} initiative${activeInits !== 1 ? 's' : ''}`);
-    if (activeImpeach > 0) civicParts.push(`⚖️ ${activeImpeach} impeachment${activeImpeach !== 1 ? 's' : ''}`);
+    if (c.active_refs > 0)    civicParts.push(`📊 ${c.active_refs} referendum${c.active_refs !== 1 ? 's' : ''}`);
+    if (c.active_inits > 0)   civicParts.push(`📣 ${c.active_inits} initiative${c.active_inits !== 1 ? 's' : ''}`);
+    if (c.active_impeach > 0) civicParts.push(`⚖️ ${c.active_impeach} impeachment${c.active_impeach !== 1 ? 's' : ''}`);
     const civicValue = civicParts.length > 0 ? civicParts.join(' · ') : '—';
 
     const sym = treasury?.currency_symbol || '₡';
@@ -50,16 +57,16 @@ export default {
       .setTitle(`🏛️ ${config?.government_name || 'The Republic'} — Government Overview`)
       .setDescription(`*Welcome to the official government dashboard of **${config?.government_name || 'The Republic'}**.*`)
       .addFields(
-        { name: '👥 Citizens',         value: `${citizens}`,                           inline: true },
-        { name: '🏛️ Parties',          value: `${parties}`,                            inline: true },
-        { name: '📜 Laws Enacted',     value: `${laws}`,                               inline: true },
-        { name: '🗳️ Elections',        value: electionValue,                           inline: true },
-        { name: '⚖️ Open Cases',       value: `${openCases}`,                          inline: true },
-        { name: '📋 Pending Bills',    value: `${pendingBills}`,                       inline: true },
-        { name: '💼 Offices Filled',   value: `${filledOffices}/${totalOffices}`,      inline: true },
-        { name: `${sym} Treasury`,     value: `${sym}${bal.toLocaleString()} ${cur}`,  inline: true },
-        { name: '🗳️ Civic Activity',   value: civicValue,                              inline: true },
-        { name: '⚡ Current Officials', value: officeText,                             inline: false }
+        { name: '👥 Citizens',          value: `${c.citizens}`,                         inline: true },
+        { name: '🏛️ Parties',           value: `${c.parties}`,                          inline: true },
+        { name: '📜 Laws Enacted',      value: `${c.laws}`,                             inline: true },
+        { name: '🗳️ Elections',         value: electionValue,                           inline: true },
+        { name: '⚖️ Open Cases',        value: `${c.open_cases}`,                       inline: true },
+        { name: '📋 Pending Bills',     value: `${c.pending_bills}`,                    inline: true },
+        { name: '💼 Offices Filled',    value: `${c.filled_offices}/${c.total_offices}`, inline: true },
+        { name: `${sym} Treasury`,      value: `${sym}${bal.toLocaleString()} ${cur}`,  inline: true },
+        { name: '🗳️ Civic Activity',    value: civicValue,                              inline: true },
+        { name: '⚡ Current Officials', value: officeText,                              inline: false }
       )
       .setTimestamp()
       .setFooter({ text: 'GovBot • Mock Government System' });
