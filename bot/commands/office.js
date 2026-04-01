@@ -2,50 +2,117 @@ import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } from 'discord.
 import db from '../database.js';
 import { errorEmbed, successEmbed, logActivity } from '../utils/helpers.js';
 
+// ── Prepared statements ──────────────────────────────────────────────────────
+const stmtGetOffice    = db.prepare('SELECT * FROM offices WHERE guild_id = ? AND LOWER(name) = LOWER(?)');
+const stmtAllOffices   = db.prepare('SELECT * FROM offices WHERE guild_id = ? ORDER BY name ASC');
+const stmtInsertOffice = db.prepare(
+  'INSERT INTO offices (guild_id, name, description, role_id, term_length_days, is_elected, is_permanent) VALUES (?, ?, ?, ?, ?, ?, ?)'
+);
+const stmtDeleteOffice = db.prepare('DELETE FROM offices WHERE id = ?');
+const stmtSetHolder    = db.prepare('UPDATE offices SET holder_id = ?, assumed_at = ? WHERE id = ?');
+const stmtClearHolder  = db.prepare('UPDATE offices SET holder_id = NULL, assumed_at = NULL WHERE id = ?');
+const stmtInsertHistory = db.prepare(
+  'INSERT INTO office_history (guild_id, office_name, user_id, assumed_at, vacated_at, reason) VALUES (?, ?, ?, ?, ?, ?)'
+);
+const stmtTermLimit    = db.prepare('SELECT * FROM term_limits WHERE guild_id = ? AND LOWER(office_name) = LOWER(?)');
+const stmtTermCount    = db.prepare(
+  'SELECT COUNT(*) as cnt FROM office_history WHERE guild_id = ? AND office_name = ? AND user_id = ?'
+);
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function termLabel(office) {
+  return office.is_permanent ? '♾️ Permanent' : `${office.term_length_days}d term`;
+}
+
+function typeBadge(office) {
+  if (office.is_permanent) return '📌 Permanent';
+  return office.is_elected ? '🗳️ Elected' : '👑 Appointed';
+}
+
+async function addRole(guild, userId, roleId) {
+  if (!roleId) return;
+  try { await (await guild.members.fetch(userId)).roles.add(roleId); } catch {}
+}
+
+async function removeRole(guild, userId, roleId) {
+  if (!roleId) return;
+  try { await (await guild.members.fetch(userId)).roles.remove(roleId); } catch {}
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+
 export default {
   data: new SlashCommandBuilder()
     .setName('office')
     .setDescription('Manage government offices and positions')
+
     .addSubcommand(s => s
       .setName('create')
       .setDescription('Create a government office (Admin only)')
       .addStringOption(o => o.setName('name').setDescription('Office name').setRequired(true))
       .addStringOption(o => o.setName('description').setDescription('Office description'))
       .addRoleOption(o => o.setName('role').setDescription('Discord role for this office'))
-      .addIntegerOption(o => o.setName('term_days').setDescription('Term length in days').setMinValue(1).setMaxValue(365))
-      .addBooleanOption(o => o.setName('elected').setDescription('Is this an elected office?')))
+      .addBooleanOption(o => o.setName('permanent').setDescription('Permanent office? Holders are appointed/removed — no term clock'))
+      .addIntegerOption(o => o.setName('term_days').setDescription('Term length in days (ignored for permanent offices)').setMinValue(1).setMaxValue(365))
+      .addBooleanOption(o => o.setName('elected').setDescription('Elected office? (ignored for permanent offices)')))
+
     .addSubcommand(s => s
       .setName('appoint')
       .setDescription('Appoint someone to an office (Admin only)')
-      .addStringOption(o => o.setName('office').setDescription('Office name').setRequired(true))
+      .addStringOption(o => o.setName('office').setDescription('Office name').setRequired(true).setAutocomplete(true))
       .addUserOption(o => o.setName('user').setDescription('User to appoint').setRequired(true)))
+
     .addSubcommand(s => s
       .setName('remove')
       .setDescription('Remove someone from an office (Admin only)')
-      .addStringOption(o => o.setName('office').setDescription('Office name').setRequired(true)))
+      .addStringOption(o => o.setName('office').setDescription('Office name').setRequired(true).setAutocomplete(true)))
+
+    .addSubcommand(s => s
+      .setName('delete')
+      .setDescription('Permanently delete a government office (Admin only)')
+      .addStringOption(o => o.setName('office').setDescription('Office name').setRequired(true).setAutocomplete(true))
+      .addBooleanOption(o => o.setName('confirm').setDescription('Set to True to confirm deletion').setRequired(true)))
+
+    .addSubcommand(s => s
+      .setName('info')
+      .setDescription('View details about a specific office')
+      .addStringOption(o => o.setName('office').setDescription('Office name').setRequired(true).setAutocomplete(true)))
+
     .addSubcommand(s => s
       .setName('list')
       .setDescription('List all government offices')),
+
+  async autocomplete(interaction) {
+    const focused = interaction.options.getFocused();
+    const offices = stmtAllOffices.all(interaction.guildId);
+    const choices = offices
+      .filter(o => o.name.toLowerCase().includes(focused.toLowerCase()))
+      .slice(0, 25)
+      .map(o => ({ name: o.name, value: o.name }));
+    await interaction.respond(choices);
+  },
 
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
     const gid = interaction.guildId;
     const uid = interaction.user.id;
 
+    // ── /office create ───────────────────────────────────────────────────
     if (sub === 'create') {
       if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
         return interaction.reply({ embeds: [errorEmbed('Administrator permissions required.')], flags: 64 });
       }
-      const name = interaction.options.getString('name');
+
+      const name        = interaction.options.getString('name').trim();
       const description = interaction.options.getString('description') || '';
-      const role = interaction.options.getRole('role');
-      const termDays = interaction.options.getInteger('term_days') || 30;
-      const isElected = interaction.options.getBoolean('elected') !== false;
+      const role        = interaction.options.getRole('role');
+      const isPermanent = interaction.options.getBoolean('permanent') ?? false;
+      const termDays    = isPermanent ? 0 : (interaction.options.getInteger('term_days') || 30);
+      const isElected   = isPermanent ? false : (interaction.options.getBoolean('elected') !== false);
 
       try {
-        db.prepare('INSERT INTO offices (guild_id, name, description, role_id, term_length_days, is_elected) VALUES (?, ?, ?, ?, ?, ?)')
-          .run(gid, name, description, role?.id || null, termDays, isElected ? 1 : 0);
-      } catch (e) {
+        stmtInsertOffice.run(gid, name, description, role?.id || null, termDays, isElected ? 1 : 0, isPermanent ? 1 : 0);
+      } catch {
         return interaction.reply({ embeds: [errorEmbed(`Office **${name}** already exists.`)], flags: 64 });
       }
 
@@ -53,91 +120,90 @@ export default {
         .setColor(0x57f287)
         .setTitle('🏛️ Office Created')
         .addFields(
-          { name: '💼 Name', value: name, inline: true },
-          { name: '📋 Type', value: isElected ? 'Elected' : 'Appointed', inline: true },
-          { name: '⏱️ Term Length', value: `${termDays} days`, inline: true },
-          { name: '🎭 Role', value: role ? `${role}` : 'None', inline: true },
+          { name: '💼 Name',        value: name,                                  inline: true },
+          { name: '📋 Type',        value: typeBadge({ is_permanent: isPermanent, is_elected: isElected }), inline: true },
+          { name: '⏱️ Term',        value: isPermanent ? '♾️ Permanent' : `${termDays} days`, inline: true },
+          { name: '🎭 Role',        value: role ? `${role}` : 'None',             inline: true },
           { name: '📝 Description', value: description || 'No description.' }
-        );
+        )
+        .setTimestamp();
+
+      logActivity(gid, 'OFFICE_CREATED', uid, name, null);
       return interaction.reply({ embeds: [embed] });
     }
 
+    // ── /office appoint ───────────────────────────────────────────────────
     if (sub === 'appoint') {
       if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
         return interaction.reply({ embeds: [errorEmbed('Manage Server permissions required.')], flags: 64 });
       }
+
       const officeName = interaction.options.getString('office');
-      const target = interaction.options.getUser('user');
-      const office = db.prepare('SELECT * FROM offices WHERE guild_id = ? AND LOWER(name) = LOWER(?)').get(gid, officeName);
+      const target     = interaction.options.getUser('user');
+      const office     = stmtGetOffice.get(gid, officeName);
       if (!office) return interaction.reply({ embeds: [errorEmbed(`Office **${officeName}** not found.`)], flags: 64 });
 
-      // Check term limits
-      const limit = db.prepare('SELECT * FROM term_limits WHERE guild_id = ? AND LOWER(office_name) = LOWER(?)').get(gid, officeName);
-      if (limit) {
-        const termsServed = db.prepare('SELECT COUNT(*) as cnt FROM office_history WHERE guild_id = ? AND office_name = ? AND user_id = ?')
-          .get(gid, office.name, target.id).cnt;
-        if (termsServed >= limit.max_terms) {
-          return interaction.reply({ embeds: [errorEmbed(`<@${target.id}> has already served the maximum **${limit.max_terms}** term(s) as **${office.name}** and cannot be reappointed.`)], flags: 64 });
+      // Term limit check (permanent offices don't track terms)
+      if (!office.is_permanent) {
+        const limit = stmtTermLimit.get(gid, office.name);
+        if (limit) {
+          const termsServed = stmtTermCount.get(gid, office.name, target.id).cnt;
+          if (termsServed >= limit.max_terms) {
+            return interaction.reply({
+              embeds: [errorEmbed(
+                `<@${target.id}> has already served the maximum **${limit.max_terms}** term(s) as **${office.name}** and cannot be reappointed.`
+              )],
+              flags: 64
+            });
+          }
         }
       }
 
-      // Archive previous holder if there was one
+      // Archive & evict previous holder
       if (office.holder_id && office.assumed_at) {
-        db.prepare('INSERT INTO office_history (guild_id, office_name, user_id, assumed_at, vacated_at, reason) VALUES (?, ?, ?, ?, ?, ?)')
-          .run(gid, office.name, office.holder_id, office.assumed_at, Math.floor(Date.now() / 1000), 'replaced');
-        // Remove old holder's role
-        if (office.role_id) {
-          try {
-            const oldMember = await interaction.guild.members.fetch(office.holder_id);
-            await oldMember.roles.remove(office.role_id);
-          } catch (e) {}
-        }
+        stmtInsertHistory.run(gid, office.name, office.holder_id, office.assumed_at, Math.floor(Date.now() / 1000), 'replaced');
+        await removeRole(interaction.guild, office.holder_id, office.role_id);
       }
 
-      const now = Math.floor(Date.now() / 1000);
-      db.prepare('UPDATE offices SET holder_id = ?, assumed_at = ? WHERE id = ?').run(target.id, now, office.id);
-      logActivity(gid, 'OFFICE_APPOINTED', uid, officeName, target.id);
+      stmtSetHolder.run(target.id, Math.floor(Date.now() / 1000), office.id);
+      await addRole(interaction.guild, target.id, office.role_id);
+      logActivity(gid, 'OFFICE_APPOINTED', uid, office.name, target.id);
 
-      if (office.role_id) {
-        try {
-          const member = await interaction.guild.members.fetch(target.id);
-          await member.roles.add(office.role_id);
-        } catch (e) {}
-      }
-
-      return interaction.reply({ embeds: [successEmbed('Appointment Made', `<@${target.id}> has been appointed as **${office.name}**.`, gid)] });
+      const note = office.is_permanent ? '\n*This is a permanent position — they serve until removed.*' : '';
+      return interaction.reply({
+        embeds: [successEmbed('Appointment Made', `<@${target.id}> has been appointed as **${office.name}**.${note}`, gid)]
+      });
     }
 
+    // ── /office remove ────────────────────────────────────────────────────
     if (sub === 'remove') {
       if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
         return interaction.reply({ embeds: [errorEmbed('Manage Server permissions required.')], flags: 64 });
       }
+
       const officeName = interaction.options.getString('office');
-      const office = db.prepare('SELECT * FROM offices WHERE guild_id = ? AND LOWER(name) = LOWER(?)').get(gid, officeName);
-      if (!office || !office.holder_id) return interaction.reply({ embeds: [errorEmbed(`Office **${officeName}** not found or is already vacant.`)], flags: 64 });
+      const office     = stmtGetOffice.get(gid, officeName);
+      if (!office || !office.holder_id) {
+        return interaction.reply({ embeds: [errorEmbed(`Office **${officeName}** not found or is already vacant.`)], flags: 64 });
+      }
 
       const prevHolder = office.holder_id;
-      const now2 = Math.floor(Date.now() / 1000);
+      const now        = Math.floor(Date.now() / 1000);
+
       if (office.assumed_at) {
-        db.prepare('INSERT INTO office_history (guild_id, office_name, user_id, assumed_at, vacated_at, reason) VALUES (?, ?, ?, ?, ?, ?)')
-          .run(gid, office.name, prevHolder, office.assumed_at, now2, 'removed');
+        stmtInsertHistory.run(gid, office.name, prevHolder, office.assumed_at, now, 'removed');
       }
-      db.prepare('UPDATE offices SET holder_id = NULL, assumed_at = NULL WHERE id = ?').run(office.id);
+      stmtClearHolder.run(office.id);
+      await removeRole(interaction.guild, prevHolder, office.role_id);
+      logActivity(gid, 'OFFICE_REMOVED', uid, office.name, prevHolder);
 
-      if (office.role_id) {
-        try {
-          const member = await interaction.guild.members.fetch(prevHolder);
-          await member.roles.remove(office.role_id);
-        } catch (e) {}
-      }
-
-      // Announce vacancy in announcement channel
-      const config = db.prepare('SELECT * FROM server_config WHERE guild_id = ?').get(gid);
+      // Announce vacancy
+      const config = db.prepare('SELECT announcement_channel FROM server_config WHERE guild_id = ?').get(gid);
       if (config?.announcement_channel) {
         try {
-          const announceChan = await interaction.guild.channels.fetch(config.announcement_channel).catch(() => null);
-          if (announceChan) {
-            await announceChan.send({
+          const chan = await interaction.guild.channels.fetch(config.announcement_channel).catch(() => null);
+          if (chan) {
+            await chan.send({
               embeds: [new EmbedBuilder()
                 .setColor(0xfee75c)
                 .setTitle(`💼 Office Vacant: ${office.name}`)
@@ -145,23 +211,126 @@ export default {
                 .setTimestamp()]
             });
           }
-        } catch (e) {}
+        } catch {}
       }
 
-      return interaction.reply({ embeds: [successEmbed('Office Vacated', `<@${prevHolder}> has been removed from **${office.name}**.`, gid)] });
+      return interaction.reply({
+        embeds: [successEmbed('Office Vacated', `<@${prevHolder}> has been removed from **${office.name}**.`, gid)]
+      });
     }
 
+    // ── /office delete ────────────────────────────────────────────────────
+    if (sub === 'delete') {
+      if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+        return interaction.reply({ embeds: [errorEmbed('Administrator permissions required.')], flags: 64 });
+      }
+
+      if (!interaction.options.getBoolean('confirm')) {
+        return interaction.reply({
+          embeds: [errorEmbed('Deletion cancelled. Set `confirm: True` to permanently delete this office.')],
+          flags: 64
+        });
+      }
+
+      const officeName = interaction.options.getString('office');
+      const office     = stmtGetOffice.get(gid, officeName);
+      if (!office) return interaction.reply({ embeds: [errorEmbed(`Office **${officeName}** not found.`)], flags: 64 });
+
+      // Strip role from current holder
+      if (office.holder_id) {
+        if (office.assumed_at) {
+          stmtInsertHistory.run(gid, office.name, office.holder_id, office.assumed_at, Math.floor(Date.now() / 1000), 'office_deleted');
+        }
+        await removeRole(interaction.guild, office.holder_id, office.role_id);
+      }
+
+      stmtDeleteOffice.run(office.id);
+      logActivity(gid, 'OFFICE_DELETED', uid, office.name, null);
+
+      const vacateNote = office.holder_id
+        ? `\n<@${office.holder_id}> has been removed from the position and their role stripped.`
+        : '';
+
+      return interaction.reply({
+        embeds: [successEmbed(
+          'Office Deleted',
+          `The office of **${office.name}** has been permanently removed.${vacateNote}`,
+          gid
+        )]
+      });
+    }
+
+    // ── /office info ──────────────────────────────────────────────────────
+    if (sub === 'info') {
+      const officeName = interaction.options.getString('office');
+      const office     = stmtGetOffice.get(gid, officeName);
+      if (!office) return interaction.reply({ embeds: [errorEmbed(`Office **${officeName}** not found.`)], flags: 64 });
+
+      const history = db.prepare(
+        'SELECT * FROM office_history WHERE guild_id = ? AND office_name = ? ORDER BY vacated_at DESC LIMIT 5'
+      ).all(gid, office.name);
+
+      const historyText = history.length
+        ? history.map(h => `<@${h.user_id}> — <t:${h.assumed_at}:d> → <t:${h.vacated_at}:d> *(${h.reason})*`).join('\n')
+        : '*No history yet.*';
+
+      const holderText = office.holder_id
+        ? `<@${office.holder_id}>${office.assumed_at ? ` (since <t:${office.assumed_at}:D>)` : ''}`
+        : '*Vacant*';
+
+      const limit = stmtTermLimit.get(gid, office.name);
+      const termsField = limit ? `${limit.max_terms} max` : 'No limit';
+
+      const embed = new EmbedBuilder()
+        .setColor(0x5865f2)
+        .setTitle(`🏛️ ${office.name}`)
+        .setDescription(office.description || '*No description.*')
+        .addFields(
+          { name: '📋 Type',           value: typeBadge(office),                              inline: true },
+          { name: '⏱️ Term',           value: termLabel(office),                              inline: true },
+          { name: '🔁 Term Limits',    value: termsField,                                     inline: true },
+          { name: '👤 Current Holder', value: holderText,                                     inline: false },
+          { name: '🎭 Role',           value: office.role_id ? `<@&${office.role_id}>` : 'None', inline: true },
+          { name: '📜 Recent History', value: historyText }
+        )
+        .setTimestamp();
+
+      return interaction.reply({ embeds: [embed] });
+    }
+
+    // ── /office list ──────────────────────────────────────────────────────
     if (sub === 'list') {
-      const offices = db.prepare('SELECT * FROM offices WHERE guild_id = ?').all(gid);
-      if (offices.length === 0) return interaction.reply({ embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle('🏛️ Government Offices').setDescription('No offices have been created yet. Use `/office create` to get started.')] });
+      const offices = stmtAllOffices.all(gid);
 
-      const list = offices.map(o => {
+      if (offices.length === 0) {
+        return interaction.reply({
+          embeds: [new EmbedBuilder()
+            .setColor(0x5865f2)
+            .setTitle('🏛️ Government Offices')
+            .setDescription('No offices have been created yet. Use `/office create` to get started.')]
+        });
+      }
+
+      const permanent = offices.filter(o => o.is_permanent);
+      const elected   = offices.filter(o => !o.is_permanent && o.is_elected);
+      const appointed = offices.filter(o => !o.is_permanent && !o.is_elected);
+
+      function fmt(o) {
         const holder = o.holder_id ? `<@${o.holder_id}>` : '*Vacant*';
-        const type = o.is_elected ? '🗳️' : '👑';
-        return `${type} **${o.name}** — ${holder} *(${o.term_length_days}d term)*`;
-      }).join('\n');
+        return `**${o.name}** — ${holder} *(${termLabel(o)})*`;
+      }
 
-      return interaction.reply({ embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle('🏛️ Government Offices & Positions').setDescription(list)] });
+      const embed = new EmbedBuilder()
+        .setColor(0x5865f2)
+        .setTitle('🏛️ Government Offices & Positions')
+        .setFooter({ text: `${offices.length} office${offices.length !== 1 ? 's' : ''} total` })
+        .setTimestamp();
+
+      if (permanent.length) embed.addFields({ name: '📌 Permanent Offices', value: permanent.map(fmt).join('\n') });
+      if (elected.length)   embed.addFields({ name: '🗳️ Elected Offices',   value: elected.map(fmt).join('\n') });
+      if (appointed.length) embed.addFields({ name: '👑 Appointed Offices', value: appointed.map(fmt).join('\n') });
+
+      return interaction.reply({ embeds: [embed] });
     }
   }
 };
