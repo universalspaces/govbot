@@ -232,24 +232,27 @@ export default {
     }
 
     if (sub === 'server_stats') {
-      const counts = {
-        citizens: db.prepare('SELECT COUNT(*) as c FROM citizens WHERE guild_id = ?').get(gid).c,
-        parties: db.prepare('SELECT COUNT(*) as c FROM parties WHERE guild_id = ? AND is_active = 1').get(gid).c,
-        elections_total: db.prepare('SELECT COUNT(*) as c FROM elections WHERE guild_id = ?').get(gid).c,
-        elections_active: db.prepare("SELECT COUNT(*) as c FROM elections WHERE guild_id = ? AND status = 'active'").get(gid).c,
-        bills: db.prepare('SELECT COUNT(*) as c FROM bills WHERE guild_id = ?').get(gid).c,
-        laws: db.prepare("SELECT COUNT(*) as c FROM laws WHERE guild_id = ? AND is_active = 1").get(gid).c,
-        cases_open: db.prepare("SELECT COUNT(*) as c FROM cases WHERE guild_id = ? AND status != 'closed'").get(gid).c,
-        cases_total: db.prepare('SELECT COUNT(*) as c FROM cases WHERE guild_id = ?').get(gid).c,
-        referendums: db.prepare('SELECT COUNT(*) as c FROM referendums WHERE guild_id = ?').get(gid).c,
-        initiatives: db.prepare('SELECT COUNT(*) as c FROM initiatives WHERE guild_id = ?').get(gid).c,
-        impeachments: db.prepare('SELECT COUNT(*) as c FROM impeachments WHERE guild_id = ?').get(gid).c,
-        admin_actions: db.prepare('SELECT COUNT(*) as c FROM admin_log WHERE guild_id = ?').get(gid).c,
-        activity_entries: db.prepare('SELECT COUNT(*) as c FROM activity_log WHERE guild_id = ?').get(gid).c,
-        tx_count: db.prepare('SELECT COUNT(*) as c FROM treasury_transactions WHERE guild_id = ?').get(gid).c,
-      };
-      const treasury = db.prepare('SELECT * FROM treasury WHERE guild_id = ?').get(gid);
       const config = db.prepare('SELECT * FROM server_config WHERE guild_id = ?').get(gid);
+      const treasury = db.prepare('SELECT * FROM treasury WHERE guild_id = ?').get(gid);
+
+      // Single aggregated query — replaces 14 separate COUNT statements
+      const counts = db.prepare(`
+        SELECT
+          (SELECT COUNT(*) FROM citizens             WHERE guild_id = @g)                          AS citizens,
+          (SELECT COUNT(*) FROM parties              WHERE guild_id = @g AND is_active = 1)        AS parties,
+          (SELECT COUNT(*) FROM elections            WHERE guild_id = @g)                          AS elections_total,
+          (SELECT COUNT(*) FROM elections            WHERE guild_id = @g AND status = 'active')    AS elections_active,
+          (SELECT COUNT(*) FROM bills                WHERE guild_id = @g)                          AS bills,
+          (SELECT COUNT(*) FROM laws                 WHERE guild_id = @g AND is_active = 1)        AS laws,
+          (SELECT COUNT(*) FROM cases                WHERE guild_id = @g AND status != 'closed')   AS cases_open,
+          (SELECT COUNT(*) FROM cases                WHERE guild_id = @g)                          AS cases_total,
+          (SELECT COUNT(*) FROM referendums          WHERE guild_id = @g)                          AS referendums,
+          (SELECT COUNT(*) FROM initiatives          WHERE guild_id = @g)                          AS initiatives,
+          (SELECT COUNT(*) FROM impeachments         WHERE guild_id = @g)                          AS impeachments,
+          (SELECT COUNT(*) FROM admin_log            WHERE guild_id = @g)                          AS admin_actions,
+          (SELECT COUNT(*) FROM activity_log         WHERE guild_id = @g)                          AS activity_entries,
+          (SELECT COUNT(*) FROM treasury_transactions WHERE guild_id = @g)                         AS tx_count
+      `).get({ g: gid });
 
       const embed = new EmbedBuilder()
         .setColor(0x5865f2)
