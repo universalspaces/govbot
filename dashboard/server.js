@@ -307,6 +307,12 @@ app.get('/api/:guildId/recalls', requireAuth, (req, res) => {
   res.json(recalls);
 });
 
+// Judges
+app.get('/api/:guildId/judges', requireAuth, (req, res) => {
+  const judges = db.prepare('SELECT * FROM judges WHERE guild_id = ? AND is_active = 1 ORDER BY appointed_at ASC').all(req.params.guildId);
+  res.json(judges);
+});
+
 // ─── CATCH-ALL ──────────────────────────────────────────────────────────────
 app.get('/dashboard*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
