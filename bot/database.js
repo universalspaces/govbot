@@ -493,9 +493,23 @@ db.exec(`
 `);
 
 // ── Migrations (safe to run on existing databases) ───────────────────────────
-const officeColumns = db.pragma('table_info(offices)').map(c => c.name);
+// Each block checks for the column before adding it, so it's idempotent.
+const officeColumns       = db.pragma('table_info(offices)').map(c => c.name);
+const serverConfigColumns = db.pragma('table_info(server_config)').map(c => c.name);
+
 if (!officeColumns.includes('is_permanent')) {
   db.exec('ALTER TABLE offices ADD COLUMN is_permanent INTEGER DEFAULT 0;');
+}
+
+// These three were added after initial deployment — servers with existing DBs need them
+if (!serverConfigColumns.includes('parliament_role')) {
+  db.exec('ALTER TABLE server_config ADD COLUMN parliament_role TEXT;');
+}
+if (!serverConfigColumns.includes('citizenship_oath')) {
+  db.exec('ALTER TABLE server_config ADD COLUMN citizenship_oath TEXT;');
+}
+if (!serverConfigColumns.includes('require_citizenship')) {
+  db.exec('ALTER TABLE server_config ADD COLUMN require_citizenship INTEGER DEFAULT 0;');
 }
 
 export default db;
