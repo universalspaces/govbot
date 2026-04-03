@@ -10,9 +10,6 @@ import { checkElections } from './utils/electionScheduler.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
-// Start the dashboard server
-import('../dashboard/server.js').catch(e => console.error('Dashboard failed to start:', e));
-
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -67,6 +64,8 @@ client.once('ready', async () => {
 // Event: Interaction (Rest of your code remains the same)
 client.on('interactionCreate', async interaction => {
   if (interaction.isAutocomplete()) {
+    // Guard: ignore DMs
+    if (!interaction.guildId) return;
     const command = client.commands.get(interaction.commandName);
     if (command?.autocomplete) {
       try { await command.autocomplete(interaction); } catch {}
@@ -75,6 +74,11 @@ client.on('interactionCreate', async interaction => {
   }
 
   if (!interaction.isChatInputCommand()) return;
+
+  // Guard: all slash commands require a guild context
+  if (!interaction.guildId) {
+    return interaction.reply({ content: '❌ GovBot commands can only be used inside a server.', flags: 64 });
+  }
 
   const command = client.commands.get(interaction.commandName);
   if (!command) return;
