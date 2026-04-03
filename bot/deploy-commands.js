@@ -4,9 +4,10 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 
-dotenv.config();
-
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// Load .env from project root regardless of working directory
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+
 const commands = [];
 
 // 1. Load your commands
@@ -20,6 +21,11 @@ for (const file of commandFiles) {
 }
 
 const rest = new REST().setToken(process.env.DISCORD_TOKEN);
+
+if (!process.env.DISCORD_TOKEN || !process.env.CLIENT_ID) {
+  console.error('❌ Missing required environment variables: DISCORD_TOKEN and CLIENT_ID must be set in .env');
+  process.exit(1);
+}
 
 (async () => {
   try {
