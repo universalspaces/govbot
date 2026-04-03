@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import db from '../database.js';
 import { errorEmbed, successEmbed, logActivity } from '../utils/helpers.js';
 
@@ -15,12 +15,7 @@ export default {
       .addUserOption(o => o.setName('user').setDescription('User to view (defaults to yourself)')))
     .addSubcommand(s => s
       .setName('list')
-      .setDescription('List all registered citizens'))
-    .addSubcommand(s => s
-      .setName('rep')
-      .setDescription('Give or take reputation from a citizen (Admin only)')
-      .addUserOption(o => o.setName('user').setDescription('Target user').setRequired(true))
-      .addIntegerOption(o => o.setName('amount').setDescription('Amount (positive or negative)').setRequired(true))),
+      .setDescription('List all registered citizens')),
 
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
@@ -105,21 +100,6 @@ export default {
         .setTitle('🪪 Registered Citizens')
         .setDescription(list.substring(0, 4000))
         .setFooter({ text: `${citizens.length} citizen${citizens.length !== 1 ? 's' : ''} registered` })] });
-    }
-
-    if (sub === 'rep') {
-      if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
-        return interaction.reply({ embeds: [errorEmbed('You need Manage Server permissions.')], flags: 64 });
-      }
-      const target = interaction.options.getUser('user');
-      const amount = interaction.options.getInteger('amount');
-      const citizen = db.prepare('SELECT * FROM citizens WHERE guild_id = ? AND user_id = ?').get(gid, target.id);
-      if (!citizen) return interaction.reply({ embeds: [errorEmbed(`${target.username} is not a registered citizen.`)], flags: 64 });
-
-      db.prepare('UPDATE citizens SET reputation = reputation + ? WHERE guild_id = ? AND user_id = ?').run(amount, gid, target.id);
-      const newRep = citizen.reputation + amount;
-      const sign = amount > 0 ? '+' : '';
-      return interaction.reply({ embeds: [successEmbed('Reputation Updated', `<@${target.id}>'s reputation is now **${newRep}** (${sign}${amount}).`, gid)] });
     }
   }
 };
