@@ -83,7 +83,7 @@ export default {
         },
         {
           name: '🪪 Citizens',
-          value: '`/citizen register` — Become a citizen (shows oath if configured)\n`/citizen profile` — View profile\n`/citizen list` — All registered citizens\n`/citizen rep` — Adjust reputation *(Admin)*',
+          value: '`/citizen register` — Become a citizen (shows oath if configured)\n`/citizen profile` — View profile\n`/citizen list` — All registered citizens',
           inline: false
         },
         {
