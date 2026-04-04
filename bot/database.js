@@ -430,8 +430,39 @@ db.exec(`
   );
 
   -- Indexes
-  CREATE INDEX IF NOT EXISTS idx_activity_log_guild ON activity_log(guild_id);
-  CREATE INDEX IF NOT EXISTS idx_admin_log_guild ON admin_log(guild_id);
+  CREATE INDEX IF NOT EXISTS idx_elections_guild_status   ON elections(guild_id, status);
+  CREATE INDEX IF NOT EXISTS idx_candidates_election      ON candidates(election_id);
+  CREATE INDEX IF NOT EXISTS idx_votes_election_voter     ON votes(election_id, voter_id);
+  CREATE INDEX IF NOT EXISTS idx_rcv_votes_election       ON rcv_votes(election_id, voter_id);
+  CREATE INDEX IF NOT EXISTS idx_bills_guild_status       ON bills(guild_id, status);
+  CREATE INDEX IF NOT EXISTS idx_bill_votes_bill          ON bill_votes(bill_id, voter_id);
+  CREATE INDEX IF NOT EXISTS idx_bill_cosponsors_bill     ON bill_cosponsors(bill_id);
+  CREATE INDEX IF NOT EXISTS idx_cases_guild_status       ON cases(guild_id, status);
+  CREATE INDEX IF NOT EXISTS idx_citizens_guild           ON citizens(guild_id);
+  CREATE INDEX IF NOT EXISTS idx_parties_guild_active     ON parties(guild_id, is_active);
+  CREATE INDEX IF NOT EXISTS idx_party_members_party      ON party_members(party_id);
+  CREATE INDEX IF NOT EXISTS idx_party_members_user       ON party_members(guild_id, user_id);
+  CREATE INDEX IF NOT EXISTS idx_offices_guild            ON offices(guild_id);
+  CREATE INDEX IF NOT EXISTS idx_office_history_guild     ON office_history(guild_id, user_id);
+  CREATE INDEX IF NOT EXISTS idx_referendums_guild_status ON referendums(guild_id, status);
+  CREATE INDEX IF NOT EXISTS idx_referendum_votes         ON referendum_votes(referendum_id, voter_id);
+  CREATE INDEX IF NOT EXISTS idx_initiatives_guild_status ON initiatives(guild_id, status);
+  CREATE INDEX IF NOT EXISTS idx_initiative_sigs          ON initiative_signatures(initiative_id);
+  CREATE INDEX IF NOT EXISTS idx_impeachments_guild       ON impeachments(guild_id, status);
+  CREATE INDEX IF NOT EXISTS idx_impeachment_votes        ON impeachment_votes(impeachment_id, voter_id);
+  CREATE INDEX IF NOT EXISTS idx_activity_log_guild       ON activity_log(guild_id);
+  CREATE INDEX IF NOT EXISTS idx_admin_log_guild          ON admin_log(guild_id);
+  CREATE INDEX IF NOT EXISTS idx_treasury_tx_guild        ON treasury_transactions(guild_id);
+  CREATE INDEX IF NOT EXISTS idx_wallets_guild            ON citizen_wallets(guild_id);
+  CREATE INDEX IF NOT EXISTS idx_polls_guild_status       ON polls(guild_id, status);
+  CREATE INDEX IF NOT EXISTS idx_poll_votes               ON poll_votes(poll_id, voter_id);
+  CREATE INDEX IF NOT EXISTS idx_recalls_guild_status     ON recalls(guild_id, status);
+  CREATE INDEX IF NOT EXISTS idx_recall_sigs              ON recall_signatures(recall_id);
+  CREATE INDEX IF NOT EXISTS idx_reminders_unsent         ON election_reminders(sent, remind_at);
+  CREATE INDEX IF NOT EXISTS idx_laws_guild_active        ON laws(guild_id, is_active);
+  CREATE INDEX IF NOT EXISTS idx_activity_log_time        ON activity_log(logged_at);
+  CREATE INDEX IF NOT EXISTS idx_admin_log_time           ON admin_log(logged_at);
+  CREATE INDEX IF NOT EXISTS idx_treasury_tx_time         ON treasury_transactions(created_at);
 `);
 
 // ── Migrations ──────────────────────────────────────────────────────
@@ -455,9 +486,35 @@ if (!serverConfigColumns.includes('require_citizenship')) {
 // ── Maintenance (NEW) ───────────────────────────────────────────────
 export function pruneOldData() {
   const DAYS = 30 * 24 * 60 * 60;
+
+  // Time-based pruning
   db.prepare('DELETE FROM activity_log WHERE logged_at < unixepoch() - ?').run(DAYS);
   db.prepare('DELETE FROM admin_log WHERE logged_at < unixepoch() - ?').run(DAYS);
   db.prepare('DELETE FROM treasury_transactions WHERE created_at < unixepoch() - ?').run(DAYS);
+
+  // Hard caps (extra safety)
+  db.exec(`
+    DELETE FROM activity_log 
+    WHERE id NOT IN (
+      SELECT id FROM activity_log 
+      ORDER BY logged_at DESC 
+      LIMIT 100000
+    );
+
+    DELETE FROM admin_log 
+    WHERE id NOT IN (
+      SELECT id FROM admin_log 
+      ORDER BY logged_at DESC 
+      LIMIT 50000
+    );
+
+    DELETE FROM treasury_transactions 
+    WHERE id NOT IN (
+      SELECT id FROM treasury_transactions 
+      ORDER BY created_at DESC 
+      LIMIT 50000
+    );
+  `);
 }
 
 export function checkpoint() {
@@ -465,7 +522,12 @@ export function checkpoint() {
 }
 
 export function vacuum() {
-  db.exec('VACUUM');
+  try {
+    db.pragma('wal_checkpoint(TRUNCATE)');
+    db.exec('VACUUM');
+  } catch (e) {
+    console.error('[DB] Vacuum error:', e);
+  }
 }
 
 export function startMaintenance(intervalHours = 6) {
