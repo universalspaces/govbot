@@ -4,7 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import cron from 'node-cron';
-import db from './database.js';
+import db, { startMaintenance } from './database.js';
 import { checkElections } from './utils/electionScheduler.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -57,6 +57,9 @@ client.once('ready', async () => {
   console.log(`🚀 Startup process complete.`);
   // Log for BiscetHosting
   console.log(`successfully finished startup`);
+
+  // Maintenance
+  startMaintenance();
 
   cron.schedule('* * * * *', () => checkElections(client));
 });
