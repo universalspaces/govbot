@@ -6,14 +6,20 @@ import { mkdirSync } from 'fs';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.join(__dirname, '../data');
 mkdirSync(dataDir, { recursive: true });
+
 const db = new Database(path.join(dataDir, 'govbot.db'));
 
+// ── Performance + Safety ─────────────────────────────────────────────
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
-db.pragma('synchronous = NORMAL');  // safe with WAL, faster than FULL
-db.pragma('cache_size = -32000');   // 32MB page cache
-db.pragma('temp_store = MEMORY');   // temp tables in memory
+db.pragma('synchronous = NORMAL');
+db.pragma('cache_size = -32000'); // 32MB cache
+db.pragma('temp_store = MEMORY');
 
+// Auto-checkpoint WAL to prevent runaway growth (~4MB)
+db.pragma('wal_autocheckpoint = 1000');
+
+// ── Schema ───────────────────────────────────────────────────────────
 db.exec(`
   -- Server configuration
   CREATE TABLE IF NOT EXISTS server_config (
@@ -32,7 +38,6 @@ db.exec(`
     created_at INTEGER DEFAULT (unixepoch())
   );
 
-  -- Political Parties
   CREATE TABLE IF NOT EXISTS parties (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     guild_id TEXT NOT NULL,
@@ -49,7 +54,6 @@ db.exec(`
     UNIQUE(guild_id, name)
   );
 
-  -- Party Members
   CREATE TABLE IF NOT EXISTS party_members (
     guild_id TEXT NOT NULL,
     user_id TEXT NOT NULL,
@@ -60,7 +64,6 @@ db.exec(`
     FOREIGN KEY (party_id) REFERENCES parties(id)
   );
 
-  -- Elections
   CREATE TABLE IF NOT EXISTS elections (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     guild_id TEXT NOT NULL,
@@ -76,7 +79,6 @@ db.exec(`
     winner_id TEXT
   );
 
-  -- Election Candidates
   CREATE TABLE IF NOT EXISTS candidates (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     election_id INTEGER NOT NULL,
@@ -89,7 +91,6 @@ db.exec(`
     FOREIGN KEY (election_id) REFERENCES elections(id)
   );
 
-  -- Votes
   CREATE TABLE IF NOT EXISTS votes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     election_id INTEGER NOT NULL,
@@ -101,7 +102,6 @@ db.exec(`
     FOREIGN KEY (candidate_id) REFERENCES candidates(id)
   );
 
-  -- Government Offices / Roles
   CREATE TABLE IF NOT EXISTS offices (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     guild_id TEXT NOT NULL,
@@ -116,7 +116,6 @@ db.exec(`
     UNIQUE(guild_id, name)
   );
 
-  -- Legislature Bills
   CREATE TABLE IF NOT EXISTS bills (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     guild_id TEXT NOT NULL,
@@ -132,7 +131,6 @@ db.exec(`
     message_id TEXT
   );
 
-  -- Bill Votes
   CREATE TABLE IF NOT EXISTS bill_votes (
     bill_id INTEGER NOT NULL,
     voter_id TEXT NOT NULL,
@@ -142,7 +140,6 @@ db.exec(`
     FOREIGN KEY (bill_id) REFERENCES bills(id)
   );
 
-  -- Court Cases
   CREATE TABLE IF NOT EXISTS cases (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     guild_id TEXT NOT NULL,
@@ -159,7 +156,6 @@ db.exec(`
     message_id TEXT
   );
 
-  -- Laws (passed bills)
   CREATE TABLE IF NOT EXISTS laws (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     guild_id TEXT NOT NULL,
@@ -171,7 +167,6 @@ db.exec(`
     is_active INTEGER DEFAULT 1
   );
 
-  -- Citizens (registered users)
   CREATE TABLE IF NOT EXISTS citizens (
     guild_id TEXT NOT NULL,
     user_id TEXT NOT NULL,
@@ -181,7 +176,6 @@ db.exec(`
     PRIMARY KEY (guild_id, user_id)
   );
 
-  -- Government Treasury
   CREATE TABLE IF NOT EXISTS treasury (
     guild_id TEXT PRIMARY KEY,
     balance INTEGER DEFAULT 10000,
@@ -190,7 +184,6 @@ db.exec(`
     last_updated INTEGER DEFAULT (unixepoch())
   );
 
-  -- Treasury transactions log
   CREATE TABLE IF NOT EXISTS treasury_transactions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     guild_id TEXT NOT NULL,
@@ -203,7 +196,6 @@ db.exec(`
     created_at INTEGER DEFAULT (unixepoch())
   );
 
-  -- Citizen wallets
   CREATE TABLE IF NOT EXISTS citizen_wallets (
     guild_id TEXT NOT NULL,
     user_id TEXT NOT NULL,
@@ -211,7 +203,6 @@ db.exec(`
     PRIMARY KEY (guild_id, user_id)
   );
 
-  -- Admin action log (separate from activity log — stricter audit trail)
   CREATE TABLE IF NOT EXISTS admin_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     guild_id TEXT NOT NULL,
@@ -223,7 +214,6 @@ db.exec(`
     logged_at INTEGER DEFAULT (unixepoch())
   );
 
-  -- Constitutional Amendments
   CREATE TABLE IF NOT EXISTS constitution (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     guild_id TEXT NOT NULL,
@@ -235,7 +225,6 @@ db.exec(`
     is_active INTEGER DEFAULT 1
   );
 
-  -- Activity Log
   CREATE TABLE IF NOT EXISTS activity_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     guild_id TEXT NOT NULL,
@@ -246,7 +235,6 @@ db.exec(`
     logged_at INTEGER DEFAULT (unixepoch())
   );
 
-  -- Ranked-choice vote preferences
   CREATE TABLE IF NOT EXISTS rcv_votes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     election_id INTEGER NOT NULL,
@@ -257,7 +245,6 @@ db.exec(`
     FOREIGN KEY (election_id) REFERENCES elections(id)
   );
 
-  -- Referendums
   CREATE TABLE IF NOT EXISTS referendums (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     guild_id TEXT NOT NULL,
@@ -273,7 +260,6 @@ db.exec(`
     result TEXT
   );
 
-  -- Referendum votes
   CREATE TABLE IF NOT EXISTS referendum_votes (
     referendum_id INTEGER NOT NULL,
     voter_id TEXT NOT NULL,
@@ -283,7 +269,6 @@ db.exec(`
     FOREIGN KEY (referendum_id) REFERENCES referendums(id)
   );
 
-  -- Citizen Initiatives
   CREATE TABLE IF NOT EXISTS initiatives (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     guild_id TEXT NOT NULL,
@@ -299,7 +284,6 @@ db.exec(`
     fulfilled_at INTEGER
   );
 
-  -- Initiative signatures
   CREATE TABLE IF NOT EXISTS initiative_signatures (
     initiative_id INTEGER NOT NULL,
     signer_id TEXT NOT NULL,
@@ -308,7 +292,6 @@ db.exec(`
     FOREIGN KEY (initiative_id) REFERENCES initiatives(id)
   );
 
-  -- Impeachment proceedings
   CREATE TABLE IF NOT EXISTS impeachments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     guild_id TEXT NOT NULL,
@@ -324,7 +307,6 @@ db.exec(`
     concluded_at INTEGER
   );
 
-  -- Impeachment votes
   CREATE TABLE IF NOT EXISTS impeachment_votes (
     impeachment_id INTEGER NOT NULL,
     voter_id TEXT NOT NULL,
@@ -334,7 +316,6 @@ db.exec(`
     FOREIGN KEY (impeachment_id) REFERENCES impeachments(id)
   );
 
-  -- Bill co-sponsors
   CREATE TABLE IF NOT EXISTS bill_cosponsors (
     bill_id INTEGER NOT NULL,
     user_id TEXT NOT NULL,
@@ -343,7 +324,6 @@ db.exec(`
     FOREIGN KEY (bill_id) REFERENCES bills(id)
   );
 
-  -- Term limit tracking (office hold history)
   CREATE TABLE IF NOT EXISTS office_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     guild_id TEXT NOT NULL,
@@ -354,7 +334,6 @@ db.exec(`
     reason TEXT DEFAULT 'term_ended'
   );
 
-  -- Term limits config per office
   CREATE TABLE IF NOT EXISTS term_limits (
     guild_id TEXT NOT NULL,
     office_name TEXT NOT NULL,
@@ -362,7 +341,6 @@ db.exec(`
     PRIMARY KEY (guild_id, office_name)
   );
 
-  -- Election vote reminders (users who opted in)
   CREATE TABLE IF NOT EXISTS election_reminders (
     guild_id TEXT NOT NULL,
     user_id TEXT NOT NULL,
@@ -372,7 +350,6 @@ db.exec(`
     PRIMARY KEY (guild_id, user_id, election_id)
   );
 
-  -- Polls (lightweight multi-option informal votes)
   CREATE TABLE IF NOT EXISTS polls (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     guild_id TEXT NOT NULL,
@@ -380,49 +357,45 @@ db.exec(`
     description TEXT,
     created_by TEXT NOT NULL,
     status TEXT DEFAULT 'active',
-    options TEXT NOT NULL,       -- JSON array of option labels
+    options TEXT NOT NULL,
     ends_at INTEGER,
     created_at INTEGER DEFAULT (unixepoch()),
     message_id TEXT,
     channel_id TEXT,
-    anonymous INTEGER DEFAULT 0  -- 1 = hide who voted for what
+    anonymous INTEGER DEFAULT 0
   );
 
-  -- Poll votes
   CREATE TABLE IF NOT EXISTS poll_votes (
     poll_id INTEGER NOT NULL,
     voter_id TEXT NOT NULL,
-    option_index INTEGER NOT NULL,  -- index into the options JSON array
+    option_index INTEGER NOT NULL,
     voted_at INTEGER DEFAULT (unixepoch()),
     PRIMARY KEY (poll_id, voter_id),
     FOREIGN KEY (poll_id) REFERENCES polls(id)
   );
 
-  -- Bill voting config (deadline + quorum per bill)
   CREATE TABLE IF NOT EXISTS bill_voting_config (
     bill_id INTEGER PRIMARY KEY,
-    quorum INTEGER,          -- minimum votes required before pass/reject is valid
-    voting_deadline INTEGER, -- unix timestamp, NULL = no deadline
+    quorum INTEGER,
+    voting_deadline INTEGER,
     FOREIGN KEY (bill_id) REFERENCES bills(id)
   );
 
-  -- Recall elections (citizen-driven by-elections for current officeholders)
   CREATE TABLE IF NOT EXISTS recalls (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     guild_id TEXT NOT NULL,
-    target_id TEXT NOT NULL,       -- officeholder being recalled
+    target_id TEXT NOT NULL,
     office TEXT NOT NULL,
     reason TEXT NOT NULL,
     creator_id TEXT NOT NULL,
-    status TEXT DEFAULT 'collecting', -- collecting, qualified, election_called, completed, failed
+    status TEXT DEFAULT 'collecting',
     signatures_required INTEGER NOT NULL,
     created_at INTEGER DEFAULT (unixepoch()),
     expires_at INTEGER,
-    election_id INTEGER,           -- set when a recall election is triggered
+    election_id INTEGER,
     FOREIGN KEY (election_id) REFERENCES elections(id)
   );
 
-  -- Recall signatures
   CREATE TABLE IF NOT EXISTS recall_signatures (
     recall_id INTEGER NOT NULL,
     signer_id TEXT NOT NULL,
@@ -431,7 +404,6 @@ db.exec(`
     FOREIGN KEY (recall_id) REFERENCES recalls(id)
   );
 
-  -- Appointed judges
   CREATE TABLE IF NOT EXISTS judges (
     guild_id TEXT NOT NULL,
     user_id TEXT NOT NULL,
@@ -441,7 +413,6 @@ db.exec(`
     PRIMARY KEY (guild_id, user_id)
   );
 
-  -- Court appeals (linked to original case)
   CREATE TABLE IF NOT EXISTS case_appeals (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     guild_id TEXT NOT NULL,
@@ -458,50 +429,19 @@ db.exec(`
     FOREIGN KEY (original_case_id) REFERENCES cases(id)
   );
 
-  -- ── Indexes ─────────────────────────────────────────────────────────────
-  -- Most queries filter by guild_id first, then status/user_id/etc.
-  CREATE INDEX IF NOT EXISTS idx_elections_guild_status   ON elections(guild_id, status);
-  CREATE INDEX IF NOT EXISTS idx_candidates_election      ON candidates(election_id);
-  CREATE INDEX IF NOT EXISTS idx_votes_election_voter     ON votes(election_id, voter_id);
-  CREATE INDEX IF NOT EXISTS idx_rcv_votes_election       ON rcv_votes(election_id, voter_id);
-  CREATE INDEX IF NOT EXISTS idx_bills_guild_status       ON bills(guild_id, status);
-  CREATE INDEX IF NOT EXISTS idx_bill_votes_bill          ON bill_votes(bill_id, voter_id);
-  CREATE INDEX IF NOT EXISTS idx_bill_cosponsors_bill     ON bill_cosponsors(bill_id);
-  CREATE INDEX IF NOT EXISTS idx_cases_guild_status       ON cases(guild_id, status);
-  CREATE INDEX IF NOT EXISTS idx_citizens_guild           ON citizens(guild_id);
-  CREATE INDEX IF NOT EXISTS idx_parties_guild_active     ON parties(guild_id, is_active);
-  CREATE INDEX IF NOT EXISTS idx_party_members_party      ON party_members(party_id);
-  CREATE INDEX IF NOT EXISTS idx_party_members_user       ON party_members(guild_id, user_id);
-  CREATE INDEX IF NOT EXISTS idx_offices_guild            ON offices(guild_id);
-  CREATE INDEX IF NOT EXISTS idx_office_history_guild     ON office_history(guild_id, user_id);
-  CREATE INDEX IF NOT EXISTS idx_referendums_guild_status ON referendums(guild_id, status);
-  CREATE INDEX IF NOT EXISTS idx_referendum_votes         ON referendum_votes(referendum_id, voter_id);
-  CREATE INDEX IF NOT EXISTS idx_initiatives_guild_status ON initiatives(guild_id, status);
-  CREATE INDEX IF NOT EXISTS idx_initiative_sigs          ON initiative_signatures(initiative_id);
-  CREATE INDEX IF NOT EXISTS idx_impeachments_guild       ON impeachments(guild_id, status);
-  CREATE INDEX IF NOT EXISTS idx_impeachment_votes        ON impeachment_votes(impeachment_id, voter_id);
-  CREATE INDEX IF NOT EXISTS idx_activity_log_guild       ON activity_log(guild_id);
-  CREATE INDEX IF NOT EXISTS idx_admin_log_guild          ON admin_log(guild_id);
-  CREATE INDEX IF NOT EXISTS idx_treasury_tx_guild        ON treasury_transactions(guild_id);
-  CREATE INDEX IF NOT EXISTS idx_wallets_guild            ON citizen_wallets(guild_id);
-  CREATE INDEX IF NOT EXISTS idx_polls_guild_status       ON polls(guild_id, status);
-  CREATE INDEX IF NOT EXISTS idx_poll_votes               ON poll_votes(poll_id, voter_id);
-  CREATE INDEX IF NOT EXISTS idx_recalls_guild_status     ON recalls(guild_id, status);
-  CREATE INDEX IF NOT EXISTS idx_recall_sigs              ON recall_signatures(recall_id);
-  CREATE INDEX IF NOT EXISTS idx_reminders_unsent         ON election_reminders(sent, remind_at);
-  CREATE INDEX IF NOT EXISTS idx_laws_guild_active        ON laws(guild_id, is_active);
+  -- Indexes
+  CREATE INDEX IF NOT EXISTS idx_activity_log_guild ON activity_log(guild_id);
+  CREATE INDEX IF NOT EXISTS idx_admin_log_guild ON admin_log(guild_id);
 `);
 
-// ── Migrations (safe to run on existing databases) ───────────────────────────
-// Each block checks for the column before adding it, so it's idempotent.
-const officeColumns       = db.pragma('table_info(offices)').map(c => c.name);
+// ── Migrations ──────────────────────────────────────────────────────
+const officeColumns = db.pragma('table_info(offices)').map(c => c.name);
 const serverConfigColumns = db.pragma('table_info(server_config)').map(c => c.name);
 
 if (!officeColumns.includes('is_permanent')) {
   db.exec('ALTER TABLE offices ADD COLUMN is_permanent INTEGER DEFAULT 0;');
 }
 
-// These three were added after initial deployment — servers with existing DBs need them
 if (!serverConfigColumns.includes('parliament_role')) {
   db.exec('ALTER TABLE server_config ADD COLUMN parliament_role TEXT;');
 }
@@ -510,6 +450,34 @@ if (!serverConfigColumns.includes('citizenship_oath')) {
 }
 if (!serverConfigColumns.includes('require_citizenship')) {
   db.exec('ALTER TABLE server_config ADD COLUMN require_citizenship INTEGER DEFAULT 0;');
+}
+
+// ── Maintenance (NEW) ───────────────────────────────────────────────
+export function pruneOldData() {
+  const DAYS = 30 * 24 * 60 * 60;
+  db.prepare('DELETE FROM activity_log WHERE logged_at < unixepoch() - ?').run(DAYS);
+  db.prepare('DELETE FROM admin_log WHERE logged_at < unixepoch() - ?').run(DAYS);
+  db.prepare('DELETE FROM treasury_transactions WHERE created_at < unixepoch() - ?').run(DAYS);
+}
+
+export function checkpoint() {
+  db.pragma('wal_checkpoint(FULL)');
+}
+
+export function vacuum() {
+  db.exec('VACUUM');
+}
+
+export function startMaintenance(intervalHours = 6) {
+  setInterval(() => {
+    try {
+      pruneOldData();
+      checkpoint();
+      console.log('[DB] Maintenance complete');
+    } catch (e) {
+      console.error('[DB] Maintenance error:', e);
+    }
+  }, intervalHours * 60 * 60 * 1000);
 }
 
 export default db;
