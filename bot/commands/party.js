@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, ActionRowBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } from 'discord.js';
 import db from '../database.js';
 import { errorEmbed, successEmbed, logActivity } from '../utils/helpers.js';
 
@@ -175,10 +175,33 @@ export default {
 
     if (sub === 'list') {
       const parties = db.prepare('SELECT p.*, (SELECT COUNT(*) FROM party_members WHERE party_id = p.id) as member_count FROM parties p WHERE p.guild_id = ? AND p.is_active = 1 ORDER BY member_count DESC').all(gid);
-      if (parties.length === 0) return interaction.reply({ embeds: [{ color: 0x5865f2, title: '🏛️ Political Parties', description: 'No parties have been formed yet.' }] });
+      if (parties.length === 0) return interaction.reply({ embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle('🏛️ Political Parties').setDescription('No parties have been formed yet.')] });
 
       const list = parties.map(p => `${p.emoji} **${p.name}** (${p.abbreviation}) — ${p.member_count} member(s) | *${p.ideology}*`).join('\n');
-      return interaction.reply({ embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle('🏛️ Political Parties').setDescription(list)] });
+
+      const embed = new EmbedBuilder()
+        .setColor(0x5865f2)
+        .setTitle('🏛️ Political Parties')
+        .setDescription(list)
+        .setFooter({ text: 'Select a party below to join it' });
+
+      // Only show join menu if user is not already in a party
+      const existing = db.prepare('SELECT * FROM party_members WHERE guild_id = ? AND user_id = ?').get(gid, uid);
+      if (!existing && parties.length <= 25) {
+        const selectMenu = new StringSelectMenuBuilder()
+          .setCustomId('party_join')
+          .setPlaceholder('Join a party…')
+          .addOptions(parties.map(p =>
+            new StringSelectMenuOptionBuilder()
+              .setLabel(`${p.emoji} ${p.name} (${p.abbreviation})`)
+              .setDescription(`${p.ideology || 'No ideology'} · ${p.member_count} member${p.member_count !== 1 ? 's' : ''}`)
+              .setValue(String(p.id))
+          ));
+        return interaction.reply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(selectMenu)] });
+      }
+
+      // Already in a party or too many parties for select menu — just show the list
+      return interaction.reply({ embeds: [embed.setFooter({ text: existing ? 'Use /party leave first to join a different party' : '' })] });
     }
 
     if (sub === 'members') {
