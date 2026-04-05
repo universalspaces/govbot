@@ -15,7 +15,9 @@ const stmtCounts = db.prepare(`
     (SELECT COUNT(*) FROM offices         WHERE guild_id = @g AND holder_id IS NOT NULL) AS filled_offices,
     (SELECT COUNT(*) FROM referendums     WHERE guild_id = @g AND status = 'active')    AS active_refs,
     (SELECT COUNT(*) FROM initiatives     WHERE guild_id = @g AND status = 'collecting') AS active_inits,
-    (SELECT COUNT(*) FROM impeachments    WHERE guild_id = @g AND status = 'trial')     AS active_impeach
+    (SELECT COUNT(*) FROM impeachments    WHERE guild_id = @g AND status = 'trial')     AS active_impeach,
+    (SELECT COUNT(*) FROM polls           WHERE guild_id = @g AND status = 'active')    AS active_polls,
+    (SELECT COUNT(*) FROM recalls         WHERE guild_id = @g AND status IN ('collecting','qualified')) AS active_recalls
 `);
 
 export default {
@@ -43,9 +45,11 @@ export default {
     const electionValue = electionParts.length > 0 ? electionParts.join(' · ') : '—';
 
     const civicParts = [];
-    if (c.active_refs > 0)    civicParts.push(`📊 ${c.active_refs} referendum${c.active_refs !== 1 ? 's' : ''}`);
-    if (c.active_inits > 0)   civicParts.push(`📣 ${c.active_inits} initiative${c.active_inits !== 1 ? 's' : ''}`);
-    if (c.active_impeach > 0) civicParts.push(`⚖️ ${c.active_impeach} impeachment${c.active_impeach !== 1 ? 's' : ''}`);
+    if (c.active_refs > 0)     civicParts.push(`📊 ${c.active_refs} referendum${c.active_refs !== 1 ? 's' : ''}`);
+    if (c.active_inits > 0)    civicParts.push(`📣 ${c.active_inits} initiative${c.active_inits !== 1 ? 's' : ''}`);
+    if (c.active_impeach > 0)  civicParts.push(`⚖️ ${c.active_impeach} impeachment${c.active_impeach !== 1 ? 's' : ''}`);
+    if (c.active_polls > 0)    civicParts.push(`📋 ${c.active_polls} poll${c.active_polls !== 1 ? 's' : ''}`);
+    if (c.active_recalls > 0)  civicParts.push(`📋 ${c.active_recalls} recall${c.active_recalls !== 1 ? 's' : ''}`);
     const civicValue = civicParts.length > 0 ? civicParts.join(' · ') : '—';
 
     const sym = treasury?.currency_symbol || '₡';
