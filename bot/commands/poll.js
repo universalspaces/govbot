@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, ActionRowBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } from 'discord.js';
 import db from '../database.js';
 import { errorEmbed, successEmbed, logActivity } from '../utils/helpers.js';
 
@@ -120,8 +120,19 @@ export default {
           { name: '🔒 Anonymous', value: anonymous ? 'Yes' : 'No', inline: true },
           ...(endsAt ? [{ name: '⏰ Closes', value: `<t:${endsAt}:F>`, inline: true }] : [{ name: '⏰ Closes', value: 'No deadline', inline: true }])
         )
-        .setFooter({ text: `Use /poll vote poll_id:${result.lastInsertRowid} option:<number>` })
+        .setFooter({ text: `Poll #${result.lastInsertRowid} · Select an option below to vote` })
         .setTimestamp();
+
+      const selectMenu = new StringSelectMenuBuilder()
+        .setCustomId(`poll_vote:${result.lastInsertRowid}`)
+        .setPlaceholder('Cast your vote…')
+        .addOptions(options.map((opt, i) =>
+          new StringSelectMenuOptionBuilder()
+            .setLabel(`${i + 1}. ${opt.substring(0, 97)}`)
+            .setValue(String(i))
+            .setEmoji(NUM_EMOJI[i])
+        ));
+      const voteRow = new ActionRowBuilder().addComponents(selectMenu);
 
       // Post to election channel if configured, otherwise reply in-channel
       const channel = config?.election_channel
@@ -129,13 +140,13 @@ export default {
         : null;
 
       if (channel && channel.id !== interaction.channelId) {
-        const msg = await channel.send({ embeds: [embed] });
+        const msg = await channel.send({ embeds: [embed], components: [voteRow] });
         db.prepare('UPDATE polls SET message_id = ?, channel_id = ? WHERE id = ?')
           .run(msg.id, channel.id, result.lastInsertRowid);
         return interaction.reply({ content: `✅ Poll created and posted in ${channel}!`, flags: 64 });
       }
 
-      const msg = await interaction.reply({ embeds: [embed], fetchReply: true });
+      const msg = await interaction.reply({ embeds: [embed], components: [voteRow], fetchReply: true });
       db.prepare('UPDATE polls SET message_id = ?, channel_id = ? WHERE id = ?')
         .run(msg.id, interaction.channelId, result.lastInsertRowid);
       return;
@@ -190,7 +201,22 @@ export default {
       if (!poll) return interaction.reply({ embeds: [errorEmbed(`Poll #${pollId} not found.`)], flags: 64 });
 
       const votes = db.prepare('SELECT * FROM poll_votes WHERE poll_id = ?').all(pollId);
-      return interaction.reply({ embeds: [buildResultsEmbed(poll, votes, '📊')] });
+      const embed = buildResultsEmbed(poll, votes, '📊');
+
+      if (poll.status === 'active') {
+        const options = JSON.parse(poll.options);
+        const selectMenu = new StringSelectMenuBuilder()
+          .setCustomId(`poll_vote:${pollId}`)
+          .setPlaceholder('Cast or change your vote…')
+          .addOptions(options.map((opt, i) =>
+            new StringSelectMenuOptionBuilder()
+              .setLabel(`${i + 1}. ${opt.substring(0, 97)}`)
+              .setValue(String(i))
+              .setEmoji(NUM_EMOJI[i])
+          ));
+        return interaction.reply({ embeds: [embed], components: [new ActionRowBuilder().addComponents(selectMenu)] });
+      }
+      return interaction.reply({ embeds: [embed] });
     }
 
     if (sub === 'list') {
