@@ -20,7 +20,6 @@ const client = new Client({
 
 client.commands = new Collection();
 
-// 1. Load commands into the Collection
 const commandsPath = path.join(__dirname, 'commands');
 const commandFiles = readdirSync(commandsPath).filter(f => f.endsWith('.js'));
 
@@ -31,23 +30,14 @@ for (const file of commandFiles) {
   }
 }
 
-// Event: Ready (Standard event is 'ready')
 client.once('ready', async () => {
   console.log(`✅ GovBot is online as ${client.user.tag}`);
-  
-  // 2. Deployment Logic: Register commands globally
+
   try {
     const rest = new REST().setToken(process.env.DISCORD_TOKEN);
-    const commandData = client.commands.map(command => command.data.toJSON());
-
+    const commandData = client.commands.map(c => c.data.toJSON());
     console.log(`⏳ Refreshing ${commandData.length} global application (/) commands...`);
-
-    // This registers commands to every server the bot is in automatically
-    await rest.put(
-      Routes.applicationCommands(client.user.id),
-      { body: commandData }
-    );
-
+    await rest.put(Routes.applicationCommands(client.user.id), { body: commandData });
     console.log('✅ Successfully reloaded global application (/) commands.');
   } catch (error) {
     console.error('❌ Failed to deploy commands on startup:', error);
@@ -55,30 +45,82 @@ client.once('ready', async () => {
 
   console.log(`📊 Serving ${client.guilds.cache.size} server(s)`);
   console.log(`🚀 Startup process complete.`);
-  // Log for BiscetHosting
   console.log(`successfully finished startup`);
 
-  // Maintenance
   startMaintenance();
-
   cron.schedule('* * * * *', () => checkElections(client));
 });
 
-// Event: Interaction (Rest of your code remains the same)
+// ── Interaction handler ──────────────────────────────────────────────
 client.on('interactionCreate', async interaction => {
+
+  // Autocomplete
   if (interaction.isAutocomplete()) {
-    // Guard: ignore DMs
     if (!interaction.guildId) return;
-    const command = client.commands.get(interaction.commandName);
-    if (command?.autocomplete) {
-      try { await command.autocomplete(interaction); } catch {}
+    const cmd = client.commands.get(interaction.commandName);
+    if (cmd?.autocomplete) {
+      try { await cmd.autocomplete(interaction); } catch {}
+    }
+    return;
+  }
+
+  // Buttons — all use customId format "action:arg1:arg2..."
+  if (interaction.isButton()) {
+    if (!interaction.guildId) return;
+    const [action, ...parts] = interaction.customId.split(':');
+    const gid = interaction.guildId;
+    const uid = interaction.user.id;
+
+    // Ensure config row exists for button interactions too
+    let config = db.prepare('SELECT * FROM server_config WHERE guild_id = ?').get(gid);
+    if (!config) {
+      db.prepare('INSERT OR IGNORE INTO server_config (guild_id) VALUES (?)').run(gid);
+      db.prepare('INSERT OR IGNORE INTO treasury (guild_id) VALUES (?)').run(gid);
+      config = db.prepare('SELECT * FROM server_config WHERE guild_id = ?').get(gid);
+    }
+
+    try {
+      const { handle } = await import(`./handlers/${action}.js`);
+      await handle(interaction, parts, config);
+    } catch (e) {
+      if (e.code === 'ERR_MODULE_NOT_FOUND') return; // unknown button — ignore
+      console.error(`Button error [${action}]:`, e);
+      const msg = { content: '❌ An error occurred.', flags: 64 };
+      if (interaction.replied || interaction.deferred) await interaction.followUp(msg).catch(() => {});
+      else await interaction.reply(msg).catch(() => {});
+    }
+    return;
+  }
+
+  // Select menus
+  if (interaction.isStringSelectMenu()) {
+    if (!interaction.guildId) return;
+    const [action, ...parts] = interaction.customId.split(':');
+    const gid = interaction.guildId;
+
+    let config = db.prepare('SELECT * FROM server_config WHERE guild_id = ?').get(gid);
+    if (!config) {
+      db.prepare('INSERT OR IGNORE INTO server_config (guild_id) VALUES (?)').run(gid);
+      db.prepare('INSERT OR IGNORE INTO treasury (guild_id) VALUES (?)').run(gid);
+      config = db.prepare('SELECT * FROM server_config WHERE guild_id = ?').get(gid);
+    }
+
+    try {
+      const { handle } = await import(`./handlers/${action}.js`);
+      await handle(interaction, parts, config);
+    } catch (e) {
+      if (e.code === 'ERR_MODULE_NOT_FOUND') return;
+      console.error(`Select error [${action}]:`, e);
+      const msg = { content: '❌ An error occurred.', flags: 64 };
+      if (interaction.replied || interaction.deferred) await interaction.followUp(msg).catch(() => {});
+      else await interaction.reply(msg).catch(() => {});
     }
     return;
   }
 
   if (!interaction.isChatInputCommand()) return;
 
-  // Guard: all slash commands require a guild context
+  // DM guard — all commands require a guild
   if (!interaction.guildId) {
     return interaction.reply({ content: '❌ GovBot commands can only be used inside a server.', flags: 64 });
   }
@@ -86,7 +128,7 @@ client.on('interactionCreate', async interaction => {
   const command = client.commands.get(interaction.commandName);
   if (!command) return;
 
-  // Ensure server config and treasury rows exist for this guild
+  // Ensure server config row exists
   let config = db.prepare('SELECT * FROM server_config WHERE guild_id = ?').get(interaction.guildId);
   if (!config) {
     db.prepare('INSERT OR IGNORE INTO server_config (guild_id) VALUES (?)').run(interaction.guildId);
@@ -94,7 +136,7 @@ client.on('interactionCreate', async interaction => {
     config = db.prepare('SELECT * FROM server_config WHERE guild_id = ?').get(interaction.guildId);
   }
 
-  // Citizenship gate — one query, reuses config already loaded above
+  // Citizenship gate
   if (config?.require_citizenship) {
     const EXEMPT_COMMANDS = ['citizen', 'help', 'setup', 'government', 'admin', 'stats', 'treasury'];
     const EXEMPT_SUBS = ['register', 'profile', 'list', 'info', 'balance', 'wallet', 'transactions', 'richlist', 'judges'];
@@ -104,7 +146,8 @@ client.on('interactionCreate', async interaction => {
       || ['list', 'info', 'view', 'docket'].includes(sub);
 
     if (!isExempt) {
-      const citizen = db.prepare('SELECT 1 FROM citizens WHERE guild_id = ? AND user_id = ?').get(interaction.guildId, interaction.user.id);
+      const citizen = db.prepare('SELECT 1 FROM citizens WHERE guild_id = ? AND user_id = ?')
+        .get(interaction.guildId, interaction.user.id);
       if (!citizen) {
         const { EmbedBuilder } = await import('discord.js');
         return interaction.reply({
@@ -123,14 +166,10 @@ client.on('interactionCreate', async interaction => {
   } catch (error) {
     console.error(`Error in command ${interaction.commandName}:`, error);
     const msg = { content: '❌ An error occurred while executing this command.', flags: 64 };
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp(msg);
-    } else {
-      await interaction.reply(msg);
-    }
+    if (interaction.replied || interaction.deferred) await interaction.followUp(msg);
+    else await interaction.reply(msg);
   }
 });
 
 client.login(process.env.DISCORD_TOKEN);
-
 export default client;

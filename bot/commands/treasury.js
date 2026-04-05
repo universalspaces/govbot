@@ -323,6 +323,7 @@ export default {
       const desc = interaction.options.getString('description');
 
       if (to.id === uid) return interaction.reply({ embeds: [errorEmbed('You cannot send funds to yourself.')], flags: 64 });
+      if (to.bot) return interaction.reply({ embeds: [errorEmbed('You cannot send funds to a bot.')], flags: 64 });
 
       const senderWallet = getWallet(gid, uid);
       if (senderWallet.balance < amount) {

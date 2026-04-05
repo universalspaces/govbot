@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import db from '../database.js';
 import { errorEmbed, successEmbed, logActivity } from '../utils/helpers.js';
 
@@ -79,18 +79,24 @@ export default {
           { name: '📜 Charges', value: charges },
           { name: '📋 Status', value: 'TRIAL IN PROGRESS', inline: true }
         )
-        .setFooter({ text: `Use /impeach vote id:${result.lastInsertRowid} to cast your verdict` })
+        .setFooter({ text: 'Use the buttons below to cast your verdict' })
         .setTimestamp();
+
+      const voteRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`imp_vote:${result.lastInsertRowid}:convict`).setLabel('Convict').setEmoji('⚖️').setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId(`imp_vote:${result.lastInsertRowid}:acquit`).setLabel('Acquit').setEmoji('🛡️').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(`imp_vote:${result.lastInsertRowid}:abstain`).setLabel('Abstain').setEmoji('⬛').setStyle(ButtonStyle.Secondary),
+      );
 
       const channel = config?.announcement_channel
         ? await interaction.guild.channels.fetch(config.announcement_channel).catch(() => null)
         : null;
 
       if (channel && channel.id !== interaction.channelId) {
-        await channel.send({ embeds: [embed] });
+        await channel.send({ embeds: [embed], components: [voteRow] });
         return interaction.reply({ content: `⚖️ Impeachment filed and announced in ${channel}!`, flags: 64 });
       }
-      return interaction.reply({ embeds: [embed] });
+      return interaction.reply({ embeds: [embed], components: [voteRow] });
     }
 
     if (sub === 'vote') {
@@ -210,6 +216,14 @@ export default {
           { name: '⬛ Abstain', value: `${p.votes_abstain} / ${total} total`, inline: true }
         );
 
+      if (p.status === 'trial') {
+        const voteRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId(`imp_vote:${id}:convict`).setLabel('Convict').setEmoji('⚖️').setStyle(ButtonStyle.Danger),
+          new ButtonBuilder().setCustomId(`imp_vote:${id}:acquit`).setLabel('Acquit').setEmoji('🛡️').setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId(`imp_vote:${id}:abstain`).setLabel('Abstain').setEmoji('⬛').setStyle(ButtonStyle.Secondary),
+        );
+        return interaction.reply({ embeds: [embed], components: [voteRow] });
+      }
       return interaction.reply({ embeds: [embed] });
     }
 

@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
 import db from '../database.js';
 import { errorEmbed, successEmbed, logActivity } from '../utils/helpers.js';
 

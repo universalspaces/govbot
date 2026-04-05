@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import db from '../database.js';
 import { errorEmbed, successEmbed, logActivity } from '../utils/helpers.js';
 
@@ -67,18 +67,24 @@ export default {
           { name: '📋 Status', value: 'Active', inline: true },
           { name: '⏰ Closes', value: `<t:${endsAt}:F>`, inline: false }
         )
-        .setFooter({ text: `Use /referendum vote id:${result.lastInsertRowid} to cast your vote` })
+        .setFooter({ text: 'Use the buttons below to cast your vote' })
         .setTimestamp();
+
+      const voteRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`ref_vote:${result.lastInsertRowid}:yes`).setLabel('Yes').setEmoji('✅').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(`ref_vote:${result.lastInsertRowid}:no`).setLabel('No').setEmoji('❌').setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId(`ref_vote:${result.lastInsertRowid}:abstain`).setLabel('Abstain').setEmoji('⬛').setStyle(ButtonStyle.Secondary),
+      );
 
       const channel = config?.election_channel
         ? await interaction.guild.channels.fetch(config.election_channel).catch(() => null)
         : null;
 
       if (channel && channel.id !== interaction.channelId) {
-        await channel.send({ embeds: [embed] });
+        await channel.send({ embeds: [embed], components: [voteRow] });
         return interaction.reply({ content: `✅ Referendum created and posted in ${channel}!`, flags: 64 });
       }
-      return interaction.reply({ embeds: [embed] });
+      return interaction.reply({ embeds: [embed], components: [voteRow] });
     }
 
     if (sub === 'vote') {
@@ -195,6 +201,15 @@ export default {
 
       if (ref.result) embed.addFields({ name: '📊 Result', value: ref.result.toUpperCase(), inline: true });
 
+      // Show vote buttons only if the referendum is still active
+      if (ref.status === 'active') {
+        const voteRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId(`ref_vote:${id}:yes`).setLabel('Yes').setEmoji('✅').setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId(`ref_vote:${id}:no`).setLabel('No').setEmoji('❌').setStyle(ButtonStyle.Danger),
+          new ButtonBuilder().setCustomId(`ref_vote:${id}:abstain`).setLabel('Abstain').setEmoji('⬛').setStyle(ButtonStyle.Secondary),
+        );
+        return interaction.reply({ embeds: [embed], components: [voteRow] });
+      }
       return interaction.reply({ embeds: [embed] });
     }
 

@@ -220,10 +220,9 @@ export default {
       if (!election) return interaction.reply({ embeds: [errorEmbed(`Election #${id} not found.`)], flags: 64 });
       if (election.status === 'closed') return interaction.reply({ embeds: [errorEmbed('Cannot cancel an already-closed election.')], flags: 64 });
 
-      // Remove all related data
-      const candidateIds = db.prepare('SELECT id FROM candidates WHERE election_id = ?').all(id).map(c => c.id);
-      if (candidateIds.length) db.prepare(`DELETE FROM votes WHERE election_id = ?`).run(id);
-      if (candidateIds.length) db.prepare(`DELETE FROM rcv_votes WHERE election_id = ?`).run(id);
+      // Remove all related data regardless of candidate count
+      db.prepare(`DELETE FROM votes WHERE election_id = ?`).run(id);
+      db.prepare(`DELETE FROM rcv_votes WHERE election_id = ?`).run(id);
       db.prepare('DELETE FROM candidates WHERE election_id = ?').run(id);
       db.prepare('DELETE FROM election_reminders WHERE election_id = ?').run(id);
       db.prepare('DELETE FROM elections WHERE id = ?').run(id);
@@ -238,8 +237,12 @@ export default {
       const election = db.prepare('SELECT * FROM elections WHERE id = ? AND guild_id = ?').get(id, gid);
 
       if (!election) return interaction.reply({ embeds: [errorEmbed(`Election #${id} not found.`)], flags: 64 });
-      if (!['registration', 'scheduled', 'active'].includes(election.status)) {
-        return interaction.reply({ embeds: [errorEmbed('Registration is not open for this election.')], flags: 64 });
+      if (!['registration', 'scheduled'].includes(election.status)) {
+        return interaction.reply({ embeds: [errorEmbed(
+          election.status === 'active'
+            ? 'Voting is already underway — candidate registration is closed.'
+            : 'Registration is not open for this election.'
+        )], flags: 64 });
       }
 
       const officeName = getOfficeName(election);
