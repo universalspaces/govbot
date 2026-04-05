@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import db from '../database.js';
 import { errorEmbed, successEmbed, logActivity, requireCitizen } from '../utils/helpers.js';
 
@@ -95,17 +95,23 @@ export default {
           { name: '⏰ Voting Deadline', value: deadlineText, inline: true },
           { name: '🗳️ Quorum', value: quorumText, inline: true }
         )
-        .setFooter({ text: `Co-sponsor: /bill cosponsor bill_id:${result.lastInsertRowid} · Vote: /bill vote` })
+        .setFooter({ text: `Bill #${result.lastInsertRowid} · Use the buttons below to vote` })
         .setTimestamp();
+
+      const voteRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`bill_vote:${result.lastInsertRowid}:yes`).setLabel('Yea').setEmoji('✅').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(`bill_vote:${result.lastInsertRowid}:no`).setLabel('Nay').setEmoji('❌').setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId(`bill_vote:${result.lastInsertRowid}:abstain`).setLabel('Abstain').setEmoji('⬛').setStyle(ButtonStyle.Secondary),
+      );
 
       if (config?.legislature_channel) {
         const channel = await interaction.guild.channels.fetch(config.legislature_channel).catch(() => null);
         if (channel) {
-          await channel.send({ embeds: [embed] });
+          await channel.send({ embeds: [embed], components: [voteRow] });
           return interaction.reply({ content: `✅ Bill proposed and posted in ${channel}!`, flags: 64 });
         }
       }
-      return interaction.reply({ embeds: [embed] });
+      return interaction.reply({ embeds: [embed], components: [voteRow] });
     }
 
     if (sub === 'amend') {
@@ -341,6 +347,14 @@ export default {
           { name: '⏰ Voting Deadline', value: votingConfig?.voting_deadline ? `<t:${votingConfig.voting_deadline}:F>` : 'No deadline', inline: true },
           { name: '👥 Co-sponsors', value: cosponsorText }
         );
+      if (bill.status === 'proposed') {
+        const voteRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId(`bill_vote:${billId}:yes`).setLabel('Yea').setEmoji('✅').setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId(`bill_vote:${billId}:no`).setLabel('Nay').setEmoji('❌').setStyle(ButtonStyle.Danger),
+          new ButtonBuilder().setCustomId(`bill_vote:${billId}:abstain`).setLabel('Abstain').setEmoji('⬛').setStyle(ButtonStyle.Secondary),
+        );
+        return interaction.reply({ embeds: [embed], components: [voteRow] });
+      }
       return interaction.reply({ embeds: [embed] });
     }
 
