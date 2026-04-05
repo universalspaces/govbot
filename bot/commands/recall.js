@@ -178,7 +178,7 @@ export default {
       const filled = Math.round(pct / 10);
       const bar = '█'.repeat(filled) + '░'.repeat(10 - filled);
 
-      const statusColors = { collecting: 0xfee75c, qualified: 0x5865f2, election_called: 0x57f287, completed: 0x57f287, failed: 0xed4245 };
+      const statusColors = { collecting: 0xfee75c, qualified: 0x5865f2, election_called: 0x57f287, completed: 0x57f287, failed: 0xed4245, withdrawn: 0x808080 };
 
       const embed = new EmbedBuilder()
         .setColor(statusColors[recall.status] || 0x2f3136)
@@ -211,7 +211,7 @@ export default {
 
       if (recalls.length === 0) return interaction.reply({ embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle('📋 Recall Petitions').setDescription('No recall petitions on record.')] });
 
-      const statusEmoji = { collecting: '✍️', qualified: '✅', election_called: '🗳️', completed: '🏁', failed: '❌' };
+      const statusEmoji = { collecting: '✍️', qualified: '✅', election_called: '🗳️', completed: '🏁', failed: '❌', withdrawn: '🚫' };
       const list = recalls.map(r =>
         `${statusEmoji[r.status] || '⚪'} **#${r.id}** — <@${r.target_id}> *(${r.office})* — ${r.sig_count}/${r.signatures_required} sigs`
       ).join('\n');
@@ -291,7 +291,7 @@ export default {
       if (!isCreator && !isAdmin) return interaction.reply({ embeds: [errorEmbed('Only the petition creator or an admin can withdraw this.')], flags: 64 });
       if (!['collecting', 'qualified'].includes(recall.status)) return interaction.reply({ embeds: [errorEmbed('This petition cannot be withdrawn in its current state.')], flags: 64 });
 
-      db.prepare(`UPDATE recalls SET status = 'failed' WHERE id = ?`).run(id);
+      db.prepare(`UPDATE recalls SET status = 'withdrawn' WHERE id = ?`).run(id);
       logActivity(gid, 'RECALL_WITHDRAWN', uid, `Recall #${id}`, recall.office);
       return interaction.reply({ embeds: [successEmbed('Petition Withdrawn', `Recall petition **#${id}** against <@${recall.target_id}> has been withdrawn.`, gid)] });
     }
